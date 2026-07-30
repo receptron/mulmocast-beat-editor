@@ -283,8 +283,9 @@ export const htmlToMarkup = (html: string): string => {
   let prev = "";
   while (prev !== s) {
     prev = s;
-    // The character class is a single-quantifier match — no ambiguity → linear time.
-    // eslint-disable-next-line sonarjs/slow-regex
+    // The character class is a single-quantifier match — [^>] and > are disjoint, so there is
+    // no backtracking ambiguity → linear time. sonarjs's super-linear heuristic over-flags this.
+    // eslint-disable-next-line sonarjs/super-linear-regex
     s = s.replace(/<[^>]+>/g, "");
   }
   // Decode the basic entities our escapeHtml emits, in a SINGLE pass so an input like
