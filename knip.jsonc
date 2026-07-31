@@ -1,0 +1,30 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  // src/index.ts is the published public API (package.json "main"/"module"/"exports" point at
+  // its lib build output dist/lib/index.js, produced by vite lib build). The SPA demo entry
+  // src/main.ts is auto-detected via index.html + vite.config.ts. test/**/*.ts are standalone
+  // runner scripts (tsx --test) whose test_*.ts naming knip does not auto-detect, so they are
+  // listed as entry points, not analyzed source.
+  "entry": ["src/index.ts", "test/**/*.ts"],
+  "project": ["src/**/*.{ts,vue}"],
+  "ignoreExportsUsedInFile": true,
+  "includeEntryExports": false,
+  // tailwindcss is pulled in only through `@import "tailwindcss"` in src/style.css, a CSS import
+  // knip does not follow, so it would otherwise report as an unused devDependency.
+  "ignoreDependencies": ["tailwindcss"],
+  "rules": {
+    // Warn mode: every rule is "warn" (reported, exit 0) or "off". Nothing gates CI here.
+    "files": "warn",
+    "dependencies": "warn",
+    "devDependencies": "warn",
+    "unlisted": "warn",
+    "exports": "warn",
+    "types": "warn",
+    "unresolved": "off",
+    "binaries": "off",
+    "nsExports": "off",
+    "nsTypes": "off",
+    "enumMembers": "off",
+    "duplicates": "off",
+  },
+}
