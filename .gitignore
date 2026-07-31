@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# jscpd duplication-scan output (see .github/workflows/duplication-scan.yaml)
+report/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

@@ -43,6 +43,7 @@
     "typecheck": "vue-tsc -b",
     "lint": "eslint src test",
     "test": "tsx --test ./test/**/test_*.ts",
+    "knip": "knip",
     "format": "prettier --write '{src,test}/**/*.{ts,vue,css}'",
     "prepublishOnly": "yarn run build:lib"
   },
@@ -66,6 +67,7 @@
     "eslint-plugin-sonarjs": "^4.2.0",
     "eslint-plugin-vue": "^10.10.0",
     "globals": "^17.8.0",
+    "knip": "^6",
     "prettier": "^3.9.6",
     "tailwindcss": "^4.3.3",
     "tsx": "^4.23.1",
