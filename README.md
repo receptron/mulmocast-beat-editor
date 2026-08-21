@@ -23,7 +23,7 @@ A 3-pane editor that holds a `SlideLayout[]` (or a full MulmoScript) in memory, 
 yarn add @mulmocast/deck-web @mulmocast/deck vue
 ```
 
-`vue ^3.5` and `@mulmocast/deck ^0.7.0` are peer dependencies (0.7.0 ships the `data-mulmo-path` / `data-mulmo-item-path` attributes the WYSIWYG / D&D rely on).
+`vue ^3.5` and `@mulmocast/deck ^1.0.0` are peer dependencies. The WYSIWYG editing and drag-and-drop rely on the `data-mulmo-path` / `data-mulmo-item-path` attributes, which have shipped since 0.7.0, but 1.x is the only line this package is developed and tested against.
 
 ## Usage
 
