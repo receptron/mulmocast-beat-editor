@@ -1,0 +1,10 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.test.tsbuildinfo",
+    /* Tests run in node, not the browser: they need node:test and node:assert, and none of
+       them touch the DOM types tsconfig.app.json is configured for. */
+    "types": ["node"]
+  },
+  "include": ["test/**/*.ts"]
+}
