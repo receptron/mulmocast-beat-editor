@@ -25,6 +25,9 @@
 
 ## 依存
 
-`mulmocast` が必要。`beatToHtml` は 2.10.0 で公開されるので、それまでは `yarn link` で動かす。
-CI は `--frozen-lockfile` なので、**依存に入れるまで CI は通らない**（typecheck が
-`Cannot find module 'mulmocast/browser'` で落ちる）。
+- `mulmocast@^2.10.0`（devDependency）— `beatToHtml` はこの版で公開された
+- `@mulmocast/deck` を `^1.2.0` → `^2.0.0` に。cli が 2.0.0 を要求するので、上げないと
+  top-level に 1.2.0・`mulmocast` 配下に 2.0.0 が同居する。peerDependencies も揃える。
+
+`yarn link` で動作確認したあと publish し、公開版で再確認した。クリーン install
+（`rm -rf node_modules && yarn install --frozen-lockfile`）で CI と同じ経路も通している。
