@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type EditableBeat, beatType, beatImage, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
+import { type EditableBeat, beatType, beatImage, draftOwnsBeat, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
 
 /** A template cannot narrow `$event.target` from EventTarget, so it asks here. */
 const inputValue = (event: Event): string => {
@@ -55,25 +55,19 @@ const setBullets = (text: string) =>
 const draft = ref<string | null>(null);
 
 // The draft is dropped when the beat under this index is no longer the one it was typed
-// into — delete a beat above the selected one and the index is unchanged while the beat
-// under it is a different one, which would show the previous beat's JSON against this
-// beat's preview and write it back on the next valid edit.
+// into — delete a beat above the selected one, or select another row, and the editor is
+// pointed at a different beat while a half-typed draft would still be sitting in the box,
+// to be written back on the next valid edit.
 //
-// Object identity cannot answer that: Vue hands props a reactive proxy, so the very object
+// Object identity cannot detect that: Vue hands props a reactive proxy, so the very object
 // this component emitted comes back as a different reference and every keystroke would look
-// like a beat swap. Comparing the parsed draft against the beat's own chartData can. While
-// this textarea owns the beat the two agree exactly; a half-typed draft emits nothing, so
-// chartData does not change and this does not fire.
+// like a beat swap. The key below changes on anything that can point this editor at another
+// beat, and `draftOwnsBeat` then decides whether it really is one — while this textarea owns
+// the beat, its text parses to exactly the beat's chartData.
 watch(
-  () => JSON.stringify(beatImage(props.beat).chartData ?? {}),
-  (chartData) => {
-    if (draft.value === null) return;
-    try {
-      if (JSON.stringify(JSON.parse(draft.value)) === chartData) return;
-    } catch {
-      // Half-typed JSON cannot have produced this change, so the beat was replaced.
-    }
-    draft.value = null;
+  () => `${props.index}\u0000${beatType(props.beat)}\u0000${JSON.stringify(beatImage(props.beat).chartData ?? null)}`,
+  () => {
+    if (draft.value !== null && !draftOwnsBeat(draft.value, beatImage(props.beat).chartData)) draft.value = null;
   },
 );
 

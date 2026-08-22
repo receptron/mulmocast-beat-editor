@@ -13,6 +13,7 @@ import {
   moveItem,
   selectionAfterMove,
   selectionAfterRemove,
+  draftOwnsBeat,
 } from "../src/beatHelpers";
 
 // ─── makeBeat ───
@@ -184,4 +185,32 @@ test("selectionAfterMove: an out-of-range move leaves the selection alone", () =
       assert.strictEqual(selectionAfterMove(selected, from, to, 3), selected, `${from} -> ${to}`);
     });
   });
+});
+
+// ─── draftOwnsBeat ───
+//
+// The chart textarea holds text while the beat holds parsed JSON. The draft owns the beat
+// exactly while the two agree; anything else means the editor was pointed at another beat
+// and the half-typed text must not be written into it.
+
+test("draftOwnsBeat: a draft owns the beat whose chartData it parses to", () => {
+  const data = { type: "bar", data: { labels: ["A"] } };
+  assert.strictEqual(draftOwnsBeat(JSON.stringify(data), data), true);
+  assert.strictEqual(draftOwnsBeat(JSON.stringify(data, null, 2), data), true, "whitespace is not content");
+});
+
+test("draftOwnsBeat: a half-typed draft owns nothing", () => {
+  ["", "{", '{"type":', "not json", "{'type':'bar'}"].forEach((draft) => {
+    assert.strictEqual(draftOwnsBeat(draft, { type: "bar" }), false, JSON.stringify(draft));
+  });
+});
+
+// The whole point: absent, empty, and a different chart must not be conflated, or a draft
+// survives onto a beat that never had a chart.
+test("draftOwnsBeat: absent, empty and different chartData are all distinct", () => {
+  assert.strictEqual(draftOwnsBeat("null", undefined), true, "absent chartData reads as null");
+  assert.strictEqual(draftOwnsBeat("{}", undefined), false, "empty is not absent");
+  assert.strictEqual(draftOwnsBeat("null", {}), false, "absent is not empty");
+  assert.strictEqual(draftOwnsBeat("{}", {}), true);
+  assert.strictEqual(draftOwnsBeat('{"type":"bar"}', { type: "line" }), false);
 });
