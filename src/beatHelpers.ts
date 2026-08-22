@@ -94,17 +94,33 @@ export const selectionAfterMove = (selected: number, from: number, to: number, l
 };
 
 /**
+ * A beat's chartData as a key that separates every state it can be in.
+ *
+ * `JSON.stringify` cannot: it answers `undefined` for an absent field AND for one set to
+ * `undefined`, and `"null"` for one set to null — three states, two answers. Each collision
+ * lets a draft typed into one beat survive onto another, which is one bug reported three
+ * times over three review rounds. The prefixes make the states distinct by construction
+ * rather than by enumerating the pairs that must not collide.
+ */
+export const chartDataKey = (beat: EditableBeat): string => {
+  const image = beatImage(beat);
+  if (!("chartData" in image)) return "absent";
+  const serialized = JSON.stringify(image.chartData);
+  return serialized === undefined ? "undefined" : `json:${serialized}`;
+};
+
+/**
  * Whether a chart JSON draft still belongs to the beat under it.
  *
  * The draft owns the beat exactly while the beat's `chartData` is what the draft parses to:
  * that is the state this textarea puts them in, and nothing else does. A half-typed draft
  * parses to nothing and emits nothing, so if the beat changed underneath it, the beat was
- * replaced. `?? null` rather than `?? {}` so an absent chartData and an empty one differ —
- * collapsing them lets a draft survive onto a beat that never had a chart.
+ * replaced. Both sides go through `chartDataKey`, so a draft can never own a beat whose
+ * chartData is absent or `undefined` — only one that literally holds the parsed value.
  */
-export const draftOwnsBeat = (draft: string, chartData: unknown): boolean => {
+export const draftOwnsBeat = (draft: string, beat: EditableBeat): boolean => {
   try {
-    return JSON.stringify(JSON.parse(draft)) === JSON.stringify(chartData ?? null);
+    return `json:${JSON.stringify(JSON.parse(draft))}` === chartDataKey(beat);
   } catch {
     return false;
   }

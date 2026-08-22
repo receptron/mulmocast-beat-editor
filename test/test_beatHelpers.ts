@@ -14,6 +14,7 @@ import {
   selectionAfterMove,
   selectionAfterRemove,
   draftOwnsBeat,
+  chartDataKey,
 } from "../src/beatHelpers";
 
 // ─── makeBeat ───
@@ -187,30 +188,63 @@ test("selectionAfterMove: an out-of-range move leaves the selection alone", () =
   });
 });
 
-// ─── draftOwnsBeat ───
+// ─── chartDataKey / draftOwnsBeat ───
 //
 // The chart textarea holds text while the beat holds parsed JSON. The draft owns the beat
 // exactly while the two agree; anything else means the editor was pointed at another beat
 // and the half-typed text must not be written into it.
+//
+// Three review rounds reported the same bug in three shapes, each a pair of chartData
+// states that produced one key. So the property under test is not "these two pairs differ"
+// but "every state produces its own key" — a state added later has to be added here too,
+// but a collision cannot slip in silently.
+
+const chartBeat = (image: Record<string, unknown>) => ({ text: "", image: { type: "chart", ...image } });
+
+test("chartDataKey: every chartData state gets its own key", () => {
+  const states: [string, Record<string, unknown>][] = [
+    ["absent", {}],
+    ["undefined", { chartData: undefined }],
+    ["null", { chartData: null }],
+    ["empty object", { chartData: {} }],
+    ["empty array", { chartData: [] }],
+    ["the string 'null'", { chartData: "null" }],
+    ["the string 'absent'", { chartData: "absent" }],
+    ["the string 'undefined'", { chartData: "undefined" }],
+    ["a real config", { chartData: { type: "bar" } }],
+    ["a different config", { chartData: { type: "line" } }],
+    ["zero", { chartData: 0 }],
+    ["false", { chartData: false }],
+  ];
+  const keys = states.map(([, image]) => chartDataKey(chartBeat(image)));
+  const collisions = states.flatMap(([a], i) => states.slice(i + 1).map(([b], j) => (keys[i] === keys[i + j + 1] ? `${a} === ${b}` : ""))).filter(Boolean);
+  assert.deepStrictEqual(collisions, [], "each state must produce its own key");
+  assert.strictEqual(keys.length, 12, "a state added to chartDataKey must be added here");
+});
+
+test("chartDataKey: a beat with no image has no chartData", () => {
+  assert.strictEqual(chartDataKey({}), "absent");
+  assert.strictEqual(chartDataKey({ text: "", image: "not an object" }), "absent");
+});
 
 test("draftOwnsBeat: a draft owns the beat whose chartData it parses to", () => {
   const data = { type: "bar", data: { labels: ["A"] } };
-  assert.strictEqual(draftOwnsBeat(JSON.stringify(data), data), true);
-  assert.strictEqual(draftOwnsBeat(JSON.stringify(data, null, 2), data), true, "whitespace is not content");
+  assert.strictEqual(draftOwnsBeat(JSON.stringify(data), chartBeat({ chartData: data })), true);
+  assert.strictEqual(draftOwnsBeat(JSON.stringify(data, null, 2), chartBeat({ chartData: data })), true, "whitespace is not content");
 });
 
 test("draftOwnsBeat: a half-typed draft owns nothing", () => {
   ["", "{", '{"type":', "not json", "{'type':'bar'}"].forEach((draft) => {
-    assert.strictEqual(draftOwnsBeat(draft, { type: "bar" }), false, JSON.stringify(draft));
+    assert.strictEqual(draftOwnsBeat(draft, chartBeat({ chartData: { type: "bar" } })), false, JSON.stringify(draft));
   });
 });
 
-// The whole point: absent, empty, and a different chart must not be conflated, or a draft
-// survives onto a beat that never had a chart.
-test("draftOwnsBeat: absent, empty and different chartData are all distinct", () => {
-  assert.strictEqual(draftOwnsBeat("null", undefined), true, "absent chartData reads as null");
-  assert.strictEqual(draftOwnsBeat("{}", undefined), false, "empty is not absent");
-  assert.strictEqual(draftOwnsBeat("null", {}), false, "absent is not empty");
-  assert.strictEqual(draftOwnsBeat("{}", {}), true);
-  assert.strictEqual(draftOwnsBeat('{"type":"bar"}', { type: "line" }), false);
+// The whole point: no draft may own a beat that does not literally hold the parsed value.
+test("draftOwnsBeat: absent, undefined, null and empty are all distinct owners", () => {
+  assert.strictEqual(draftOwnsBeat("null", chartBeat({ chartData: null })), true);
+  assert.strictEqual(draftOwnsBeat("null", chartBeat({})), false, "a null draft does not own an absent chartData");
+  assert.strictEqual(draftOwnsBeat("null", chartBeat({ chartData: undefined })), false);
+  assert.strictEqual(draftOwnsBeat("{}", chartBeat({})), false, "empty is not absent");
+  assert.strictEqual(draftOwnsBeat("{}", chartBeat({ chartData: {} })), true);
+  assert.strictEqual(draftOwnsBeat('{"type":"bar"}', chartBeat({ chartData: { type: "line" } })), false);
 });

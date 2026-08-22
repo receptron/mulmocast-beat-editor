@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type EditableBeat, beatType, beatImage, draftOwnsBeat, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
+import { type EditableBeat, beatType, beatImage, chartDataKey, draftOwnsBeat, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
 
 /** A template cannot narrow `$event.target` from EventTarget, so it asks here. */
 const inputValue = (event: Event): string => {
@@ -65,9 +65,9 @@ const draft = ref<string | null>(null);
 // beat, and `draftOwnsBeat` then decides whether it really is one — while this textarea owns
 // the beat, its text parses to exactly the beat's chartData.
 watch(
-  () => `${props.index}\u0000${beatType(props.beat)}\u0000${JSON.stringify(beatImage(props.beat).chartData ?? null)}`,
+  () => `${props.index}\u0000${beatType(props.beat)}\u0000${chartDataKey(props.beat)}`,
   () => {
-    if (draft.value !== null && !draftOwnsBeat(draft.value, beatImage(props.beat).chartData)) draft.value = null;
+    if (draft.value !== null && !draftOwnsBeat(draft.value, props.beat)) draft.value = null;
   },
 );
 
