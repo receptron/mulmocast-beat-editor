@@ -3,11 +3,17 @@ import { ref, computed } from "vue";
 import type { SlideLayout, SlideTheme } from "@mulmocast/deck";
 import DeckEditor from "./DeckEditor.vue";
 import BeatGallery from "./components/BeatGallery.vue";
+import BeatListEditor from "./BeatListEditor.vue";
+import { type EditableBeat, makeBeat } from "./beatHelpers";
 import { SAMPLES } from "./data/samples";
 import { clone } from "./editorHelpers";
 
 // Two views: the slide editor, and every beat type beatToHtml renders.
-const view = ref<"editor" | "beats">("editor");
+const view = ref<"editor" | "beats" | "beatEditor">("editor");
+
+// A starting script for the beat editor. Separate from the slide samples, which are
+// SlideLayout[]; this is a beat array, which is the thing being edited here.
+const beats = ref<EditableBeat[]>([makeBeat("textSlide"), makeBeat("markdown"), makeBeat("chart"), makeBeat("mermaid"), makeBeat("slide")]);
 
 const sampleKey = ref<string>(SAMPLES[0].key);
 const currentSample = computed(() => SAMPLES.find((s) => s.key === sampleKey.value) ?? SAMPLES[0]);
@@ -53,6 +59,16 @@ const resetSample = () => {
         >
           All beat types
         </button>
+        <button
+          type="button"
+          :class="[
+            'border-l border-stone-300 px-2 py-1 text-xs font-medium',
+            view === 'beatEditor' ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100',
+          ]"
+          @click="view = 'beatEditor'"
+        >
+          Beat editor
+        </button>
       </nav>
       <template v-if="view === 'editor'">
         <span class="font-semibold uppercase tracking-wider text-stone-500">Sample</span>
@@ -69,11 +85,13 @@ const resetSample = () => {
           Reset sample
         </button>
       </template>
-      <span v-else class="text-stone-500">Every beat type <code>beatToHtml</code> renders, driven the way a host would</span>
+      <span v-else-if="view === 'beats'" class="text-stone-500">Every beat type <code>beatToHtml</code> renders, driven the way a host would</span>
+      <span v-else class="text-stone-500">Edit any beat — the preview updates as you type</span>
     </header>
     <div class="flex-1 min-h-0">
       <DeckEditor v-if="view === 'editor'" v-model:slides="slides" :theme="theme" />
-      <BeatGallery v-else />
+      <BeatGallery v-else-if="view === 'beats'" />
+      <BeatListEditor v-else v-model:beats="beats" />
     </div>
   </div>
 </template>
