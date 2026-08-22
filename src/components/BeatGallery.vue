@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment } from "mulmocast/browser";
 import { slideUtilityCss } from "@mulmocast/deck";
 import { ALL_BEAT_TYPES } from "../data/allBeatTypes";
+import { collectedCss, driveRuntimes, requiredChartPlugins, requiredRuntimes } from "../beatRuntime";
 
 /**
  * Every beat type `beatToHtml` renders, side by side, doing what a host has to do:
@@ -23,63 +24,24 @@ const rendered = computed<Rendered[]>(() =>
   })),
 );
 
-const requires = computed(() => [...new Set(rendered.value.flatMap((r) => r.fragment?.requires ?? []))]);
-const chartPlugins = computed(() => [...new Set(rendered.value.flatMap((r) => r.fragment?.chartPlugins ?? []))]);
-const fragmentCss = computed(() =>
-  rendered.value
-    .map((r) => r.fragment?.css ?? "")
-    .filter(Boolean)
-    .join("\n"),
-);
+const fragmentList = computed(() => rendered.value.map((r) => r.fragment));
+const requires = computed(() => requiredRuntimes(fragmentList.value));
+const chartPlugins = computed(() => requiredChartPlugins(fragmentList.value));
+const fragmentCss = computed(() => collectedCss(fragmentList.value));
 
 const container = ref<HTMLElement | null>(null);
+// Kept so a re-render can destroy them; Chart.js refuses a canvas that still has one.
+let charts: { destroy: () => void }[] = [];
 const status = ref<string>("loading runtimes…");
-
-/** Load a CDN script once, resolving when it is ready. */
-const loadScript = (src: string): Promise<void> =>
-  new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${src}"]`);
-    if (existing) return resolve();
-    const el = document.createElement("script");
-    el.src = src;
-    el.onload = () => resolve();
-    el.onerror = () => reject(new Error(`failed to load ${src}`));
-    document.head.appendChild(el);
-  });
-
-type ChartInstance = { destroy: () => void };
-type ChartCtor = new (context: CanvasRenderingContext2D, config: unknown) => ChartInstance;
-let charts: ChartInstance[] = [];
-type MermaidApi = { initialize: (o: object) => void; init: (a: undefined, n: ArrayLike<Element>) => void };
 
 const drive = async () => {
   const host = container.value;
   if (!host) return;
-
-  if (requires.value.includes("chart")) {
-    await loadScript("https://cdn.jsdelivr.net/npm/chart.js");
-    // Plugins register themselves onto Chart, so they load after it and before any draw.
-    for (const cdn of chartPlugins.value) await loadScript(cdn);
-    const Chart = (window as unknown as { Chart?: ChartCtor }).Chart;
-    // Kept so a re-render can destroy them; Chart.js otherwise leaks the old instance and
-    // refuses to reuse a canvas that still has one.
-    charts.forEach((chart) => chart.destroy());
-    charts = [];
-    host.querySelectorAll<HTMLCanvasElement>("canvas[data-mulmo-chart]").forEach((canvas) => {
-      const config = canvas.dataset.mulmoChart;
-      const context = canvas.getContext("2d");
-      if (!Chart || !config || !context) return;
-      charts.push(new Chart(context, JSON.parse(config)));
-    });
-  }
-
-  if (requires.value.includes("mermaid")) {
-    await loadScript("https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js");
-    const mermaid = (window as unknown as { mermaid?: MermaidApi }).mermaid;
-    mermaid?.initialize({ startOnLoad: false });
-    mermaid?.init(undefined, host.querySelectorAll(".mermaid"));
-  }
-
+  charts = await driveRuntimes(
+    host,
+    rendered.value.map((r) => r.fragment),
+    charts,
+  );
   status.value = "";
 };
 
