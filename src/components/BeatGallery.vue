@@ -30,17 +30,14 @@ const chartPlugins = computed(() => requiredChartPlugins(fragmentList.value));
 const fragmentCss = computed(() => collectedCss(fragmentList.value));
 
 const container = ref<HTMLElement | null>(null);
-// Kept so a re-render can destroy them; Chart.js refuses a canvas that still has one.
-let charts: { destroy: () => void }[] = [];
 const status = ref<string>("loading runtimes…");
 
 const drive = async () => {
   const host = container.value;
   if (!host) return;
-  charts = await driveRuntimes(
+  await driveRuntimes(
     host,
     rendered.value.map((r) => r.fragment),
-    charts,
   );
   status.value = "";
 };

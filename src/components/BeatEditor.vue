@@ -1,6 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type EditableBeat, beatType, beatImage, withImageField, withNestedField, readString } from "../beatHelpers";
+import { type EditableBeat, beatType, beatImage, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
+
+/** A template cannot narrow `$event.target` from EventTarget, so it asks here. */
+const inputValue = (event: Event): string => {
+  const target = event.target;
+  return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement ? target.value : "";
+};
 
 /**
  * The editor for one beat, dispatched on its type.
@@ -25,12 +31,15 @@ const setBeat = (field: string, value: unknown) => emit("update", { ...props.bea
 //     the object form is shown read-only rather than flattened into a string, which would
 //     silently discard its slots.
 const markdownIsString = computed(() => typeof beatImage(props.beat).markdown === "string");
-const markdownText = computed(() => (markdownIsString.value ? (beatImage(props.beat).markdown as string) : ""));
+const markdownText = computed(() => {
+  const markdown = beatImage(props.beat).markdown;
+  return typeof markdown === "string" ? markdown : "";
+});
 
 // ─── textSlide: bullets are one per line, which is how they read and how they are edited.
 const bullets = computed<string[]>(() => {
   const slide = beatImage(props.beat).slide;
-  const items = slide && typeof slide === "object" ? (slide as Record<string, unknown>).bullets : undefined;
+  const items = isRecord(slide) ? slide.bullets : undefined;
   return Array.isArray(items) ? items.filter((b): b is string => typeof b === "string") : [];
 });
 const setBullets = (text: string) =>
@@ -45,11 +54,27 @@ const setBullets = (text: string) =>
 //     preview keeps the last valid chart instead of blanking on every keystroke.
 const draft = ref<string | null>(null);
 
-// A different beat means a different draft; keeping the old one would show the previous
-// beat's JSON against this beat's preview.
+// The draft is dropped when the beat under this index is no longer the one it was typed
+// into — delete a beat above the selected one and the index is unchanged while the beat
+// under it is a different one, which would show the previous beat's JSON against this
+// beat's preview and write it back on the next valid edit.
+//
+// Object identity cannot answer that: Vue hands props a reactive proxy, so the very object
+// this component emitted comes back as a different reference and every keystroke would look
+// like a beat swap. Comparing the parsed draft against the beat's own chartData can. While
+// this textarea owns the beat the two agree exactly; a half-typed draft emits nothing, so
+// chartData does not change and this does not fire.
 watch(
-  () => props.index,
-  () => (draft.value = null),
+  () => JSON.stringify(beatImage(props.beat).chartData ?? {}),
+  (chartData) => {
+    if (draft.value === null) return;
+    try {
+      if (JSON.stringify(JSON.parse(draft.value)) === chartData) return;
+    } catch {
+      // Half-typed JSON cannot have produced this change, so the beat was replaced.
+    }
+    draft.value = null;
+  },
 );
 
 const chartDraft = computed({
@@ -88,7 +113,7 @@ const chartError = computed(() => {
         :value="typeof beat.text === 'string' ? beat.text : ''"
         rows="2"
         class="rounded border border-stone-300 px-2 py-1 font-sans"
-        @input="setBeat('text', ($event.target as HTMLTextAreaElement).value)"
+        @input="setBeat('text', inputValue($event))"
       ></textarea>
     </label>
 
@@ -99,7 +124,7 @@ const chartError = computed(() => {
         <input
           :value="readString(beat, 'title', 'slide')"
           class="rounded border border-stone-300 px-2 py-1"
-          @input="setNested('slide', 'title', ($event.target as HTMLInputElement).value)"
+          @input="setNested('slide', 'title', inputValue($event))"
         />
       </label>
       <label class="flex flex-col gap-1">
@@ -107,7 +132,7 @@ const chartError = computed(() => {
         <input
           :value="readString(beat, 'subtitle', 'slide')"
           class="rounded border border-stone-300 px-2 py-1"
-          @input="setNested('slide', 'subtitle', ($event.target as HTMLInputElement).value)"
+          @input="setNested('slide', 'subtitle', inputValue($event))"
         />
       </label>
       <label class="flex flex-col gap-1">
@@ -116,7 +141,7 @@ const chartError = computed(() => {
           :value="bullets.join('\n')"
           rows="4"
           class="rounded border border-stone-300 px-2 py-1 font-mono"
-          @input="setBullets(($event.target as HTMLTextAreaElement).value)"
+          @input="setBullets(inputValue($event))"
         ></textarea>
       </label>
     </template>
@@ -129,7 +154,7 @@ const chartError = computed(() => {
           :value="markdownText"
           rows="12"
           class="rounded border border-stone-300 px-2 py-1 font-mono"
-          @input="setImage('markdown', ($event.target as HTMLTextAreaElement).value)"
+          @input="setImage('markdown', inputValue($event))"
         ></textarea>
       </label>
       <p v-else class="rounded border border-dashed border-stone-300 p-2 text-stone-500">
@@ -141,11 +166,7 @@ const chartError = computed(() => {
     <template v-else-if="type === 'chart'">
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-600">title</span>
-        <input
-          :value="readString(beat, 'title')"
-          class="rounded border border-stone-300 px-2 py-1"
-          @input="setImage('title', ($event.target as HTMLInputElement).value)"
-        />
+        <input :value="readString(beat, 'title')" class="rounded border border-stone-300 px-2 py-1" @input="setImage('title', inputValue($event))" />
       </label>
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-600">chartData <span class="font-normal text-stone-400">(Chart.js config, JSON)</span></span>
@@ -162,11 +183,7 @@ const chartError = computed(() => {
     <template v-else-if="type === 'mermaid'">
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-600">title</span>
-        <input
-          :value="readString(beat, 'title')"
-          class="rounded border border-stone-300 px-2 py-1"
-          @input="setImage('title', ($event.target as HTMLInputElement).value)"
-        />
+        <input :value="readString(beat, 'title')" class="rounded border border-stone-300 px-2 py-1" @input="setImage('title', inputValue($event))" />
       </label>
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-600">code</span>
@@ -174,7 +191,7 @@ const chartError = computed(() => {
           :value="readString(beat, 'text', 'code')"
           rows="10"
           class="rounded border border-stone-300 px-2 py-1 font-mono"
-          @input="setNested('code', 'text', ($event.target as HTMLTextAreaElement).value)"
+          @input="setNested('code', 'text', inputValue($event))"
         ></textarea>
       </label>
     </template>
@@ -187,7 +204,7 @@ const chartError = computed(() => {
           :value="readString(beat, 'url', 'source')"
           placeholder="https://…"
           class="rounded border border-stone-300 px-2 py-1 font-mono"
-          @input="setNested('source', 'url', ($event.target as HTMLInputElement).value)"
+          @input="setNested('source', 'url', inputValue($event))"
         />
       </label>
       <label v-if="type === 'image'" class="flex flex-col gap-1">
@@ -195,7 +212,7 @@ const chartError = computed(() => {
         <input
           :value="typeof beat.description === 'string' ? beat.description : ''"
           class="rounded border border-stone-300 px-2 py-1"
-          @input="setBeat('description', ($event.target as HTMLInputElement).value)"
+          @input="setBeat('description', inputValue($event))"
         />
       </label>
       <p class="text-stone-500">A remote url renders; a local path is left for the host to resolve, and a base64 source renders nothing.</p>
@@ -206,10 +223,10 @@ const chartError = computed(() => {
       <label class="flex flex-col gap-1">
         <span class="font-medium text-stone-600">html</span>
         <textarea
-          :value="typeof beatImage(beat).html === 'string' ? (beatImage(beat).html as string) : ''"
+          :value="readString(beat, 'html')"
           rows="12"
           class="rounded border border-stone-300 px-2 py-1 font-mono"
-          @input="setImage('html', ($event.target as HTMLTextAreaElement).value)"
+          @input="setImage('html', inputValue($event))"
         ></textarea>
       </label>
       <p class="text-stone-500">Raw author markup. Nothing sanitizes it — that is this beat type's contract.</p>
@@ -222,7 +239,7 @@ const chartError = computed(() => {
         <input
           :value="readString(beat, 'title', 'slide')"
           class="rounded border border-stone-300 px-2 py-1"
-          @input="setNested('slide', 'title', ($event.target as HTMLInputElement).value)"
+          @input="setNested('slide', 'title', inputValue($event))"
         />
       </label>
       <label class="flex flex-col gap-1">
@@ -230,7 +247,7 @@ const chartError = computed(() => {
         <input
           :value="readString(beat, 'subtitle', 'slide')"
           class="rounded border border-stone-300 px-2 py-1"
-          @input="setNested('slide', 'subtitle', ($event.target as HTMLInputElement).value)"
+          @input="setNested('slide', 'subtitle', inputValue($event))"
         />
       </label>
       <p class="text-stone-500">Layouts and content blocks are edited in the Slide editor tab, which has the full inspector.</p>

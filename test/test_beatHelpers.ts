@@ -2,7 +2,18 @@ import test from "node:test";
 import assert from "node:assert";
 import { beatToHtml } from "mulmocast/browser";
 
-import { BEAT_TYPES, makeBeat, beatType, beatImage, withImageField, withNestedField, readString, moveItem } from "../src/beatHelpers";
+import {
+  BEAT_TYPES,
+  makeBeat,
+  beatType,
+  beatImage,
+  withImageField,
+  withNestedField,
+  readString,
+  moveItem,
+  selectionAfterMove,
+  selectionAfterRemove,
+} from "../src/beatHelpers";
 
 // ─── makeBeat ───
 
@@ -104,5 +115,73 @@ test("moveItem: an out-of-range move keeps every item", () => {
     [1, 1],
   ].forEach(([from, to]) => {
     assert.deepStrictEqual(moveItem(items, from, to), items, `${from} -> ${to} must be a no-op`);
+  });
+});
+
+// ─── selectionAfterRemove / selectionAfterMove ───
+//
+// The rule both must obey is one property: the user keeps editing the beat they had
+// selected. Rather than pin the arithmetic, run the real array operation over every
+// (length, selected, from, to) in range and assert the beat is the same object afterwards.
+
+const RANGE = [0, 1, 2, 3, 4, 5];
+const listOf = (n: number) => Array.from({ length: n }, (_, i) => `beat-${i}`);
+
+test("selectionAfterRemove: the selected beat stays selected, for every removal", () => {
+  let checked = 0;
+  RANGE.filter((n) => n >= 2).forEach((length) => {
+    const items = listOf(length);
+    items.forEach((_, selected) => {
+      items.forEach((__, removed) => {
+        const next = items.slice();
+        next.splice(removed, 1);
+        const landed = selectionAfterRemove(selected, removed, next.length);
+        assert.ok(landed >= 0 && landed < next.length, `${length}/${selected}/${removed}: ${landed} out of range`);
+        if (removed !== selected) {
+          assert.strictEqual(next[landed], items[selected], `removing ${removed} with ${selected} selected`);
+        }
+        checked += 1;
+      });
+    });
+  });
+  assert.strictEqual(checked, 4 + 9 + 16 + 25, "the sweep must cover every (length, selected, removed)");
+});
+
+// Deleting the only beat, and deleting the selected last one: both must stay in range.
+test("selectionAfterRemove: an emptied or shortened list stays in range", () => {
+  assert.strictEqual(selectionAfterRemove(0, 0, 0), 0);
+  assert.strictEqual(selectionAfterRemove(2, 2, 2), 1);
+  assert.strictEqual(selectionAfterRemove(0, 1, 1), 0);
+});
+
+test("selectionAfterMove: the selected beat stays selected, for every move", () => {
+  let checked = 0;
+  RANGE.filter((n) => n >= 2).forEach((length) => {
+    const items = listOf(length);
+    items.forEach((_, selected) => {
+      items.forEach((__, from) => {
+        items.forEach((___, to) => {
+          const next = moveItem(items, from, to);
+          const landed = selectionAfterMove(selected, from, to, length);
+          assert.strictEqual(next[landed], items[selected], `${length}: move ${from}->${to} with ${selected} selected`);
+          checked += 1;
+        });
+      });
+    });
+  });
+  assert.strictEqual(checked, 8 + 27 + 64 + 125, "the sweep must cover every (length, selected, from, to)");
+});
+
+// The end-of-list buttons pass these; moveItem no-ops, so the selection must not drift.
+test("selectionAfterMove: an out-of-range move leaves the selection alone", () => {
+  [
+    [0, -1],
+    [2, 3],
+    [-1, 0],
+    [3, 0],
+  ].forEach(([from, to]) => {
+    RANGE.slice(0, 3).forEach((selected) => {
+      assert.strictEqual(selectionAfterMove(selected, from, to, 3), selected, `${from} -> ${to}`);
+    });
   });
 });

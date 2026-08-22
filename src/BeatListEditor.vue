@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment } from "mulmocast/browser";
+import type { MulmoBeat } from "mulmocast/browser";
 import { slideUtilityCss } from "@mulmocast/deck";
 import BeatEditor from "./components/BeatEditor.vue";
-import { BEAT_TYPES, type BeatType, type EditableBeat, beatType, makeBeat, moveItem } from "./beatHelpers";
+import { BEAT_TYPES, type BeatType, type EditableBeat, beatType, makeBeat, moveItem, selectionAfterMove, selectionAfterRemove } from "./beatHelpers";
 import { collectedCss, driveRuntimes } from "./beatRuntime";
 
 /**
@@ -25,7 +26,12 @@ const addType = ref<BeatType>("markdown");
 const fragments = computed<(BeatHtmlFragment | undefined)[]>(() =>
   props.beats.map((beat, index) => {
     try {
-      return beatToHtml(beat as never, { idPrefix: `beat-${index}` });
+      // The one place the editor's loose beat meets beatToHtml's MulmoBeat. No honest guard
+      // exists: validating a MulmoBeat needs the zod schema, which the browser build exists
+      // to avoid, and a hand-written one would drift from it. beatToHtml already answers
+      // undefined for anything it cannot render, so a beat that is not one degrades exactly
+      // as an unsupported type does — which is what the catch below is for.
+      return beatToHtml(beat as MulmoBeat, { idPrefix: `beat-${index}` });
     } catch {
       // A half-typed beat is routine while editing; the list shows a placeholder for it
       // rather than the whole editor going blank.
@@ -37,12 +43,10 @@ const fragments = computed<(BeatHtmlFragment | undefined)[]>(() =>
 const fragmentCss = computed(() => collectedCss(fragments.value));
 
 const container = ref<HTMLElement | null>(null);
-let charts: { destroy: () => void }[] = [];
 
 const redraw = async () => {
   await nextTick();
-  if (!container.value) return;
-  charts = await driveRuntimes(container.value, fragments.value, charts);
+  if (container.value) await driveRuntimes(container.value, fragments.value);
 };
 
 onMounted(() => {
@@ -69,14 +73,14 @@ const remove = (index: number) => {
   const next = props.beats.slice();
   next.splice(index, 1);
   emit("update:beats", next);
-  selected.value = Math.max(0, Math.min(selected.value, next.length - 1));
+  selected.value = selectionAfterRemove(selected.value, index, next.length);
 };
 
 const move = (index: number, delta: number) => {
   const to = index + delta;
   if (to < 0 || to >= props.beats.length) return;
   emit("update:beats", moveItem(props.beats, index, to));
-  selected.value = to;
+  selected.value = selectionAfterMove(selected.value, index, to, props.beats.length);
 };
 </script>
 
@@ -143,7 +147,14 @@ const move = (index: number, delta: number) => {
             </button>
           </span>
         </header>
-        <!-- eslint-disable-next-line vue/no-v-html -- inserting the fragment is the point; a real host sanitizes first, as docs/api.md says -->
+        <!--
+          This preview is deliberately unsanitized. A fragment carries whatever the author wrote,
+          including markup and javascript: urls, and here the author IS the person at the screen:
+          the editor is demo-only, is not exported from src/index.ts, and renders nothing it was
+          not handed locally. Sanitize (DOMPurify, keeping data-mulmo-chart and .mermaid) before
+          it renders a script from anywhere else, or before it is published as a component.
+        -->
+        <!-- eslint-disable-next-line vue/no-v-html -- unsanitized on purpose; see above -->
         <div v-if="fragments[index]" class="beat-fragment" v-html="fragments[index]!.html"></div>
         <p v-else class="rounded border border-dashed border-stone-300 p-3 text-xs text-stone-400">nothing to preview yet</p>
       </div>

@@ -12,6 +12,9 @@ export type EditableBeat = Record<string, unknown>;
 
 export type BeatType = (typeof supportedBeatTypes)[number];
 
+/** A plain object — not an array, not null. Every nested read below goes through it. */
+export const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** The beat types this editor can create. Mirrors what beatToHtml renders. */
 export const BEAT_TYPES: readonly BeatType[] = supportedBeatTypes;
 
@@ -33,15 +36,13 @@ const NEW_BEAT: Record<BeatType, () => Record<string, unknown>> = {
 export const makeBeat = (type: BeatType): EditableBeat => ({ text: "", image: NEW_BEAT[type]() });
 
 export const beatType = (beat: EditableBeat): string => {
-  const image = beat.image;
-  if (!image || typeof image !== "object") return "(no image)";
-  const type = (image as Record<string, unknown>).type;
+  if (!isRecord(beat.image)) return "(no image)";
+  const type = beat.image.type;
   return typeof type === "string" ? type : "(no type)";
 };
 
 /** Read `beat.image` as a record. Returns an empty one rather than throwing on a malformed beat. */
-export const beatImage = (beat: EditableBeat): Record<string, unknown> =>
-  beat.image && typeof beat.image === "object" ? (beat.image as Record<string, unknown>) : {};
+export const beatImage = (beat: EditableBeat): Record<string, unknown> => (isRecord(beat.image) ? beat.image : {});
 
 /** A beat with one `image` field replaced. Returns a new object; nothing is mutated. */
 export const withImageField = (beat: EditableBeat, field: string, value: unknown): EditableBeat => ({
@@ -53,7 +54,7 @@ export const withImageField = (beat: EditableBeat, field: string, value: unknown
 export const withNestedField = (beat: EditableBeat, parent: string, field: string, value: unknown): EditableBeat => {
   const image = beatImage(beat);
   const current = image[parent];
-  const parentObject = current && typeof current === "object" ? (current as Record<string, unknown>) : {};
+  const parentObject = isRecord(current) ? current : {};
   return { ...beat, image: { ...image, [parent]: { ...parentObject, [field]: value } } };
 };
 
@@ -61,8 +62,8 @@ export const withNestedField = (beat: EditableBeat, parent: string, field: strin
 export const readString = (beat: EditableBeat, field: string, parent?: string): string => {
   const image = beatImage(beat);
   const holder = parent ? image[parent] : image;
-  if (!holder || typeof holder !== "object") return "";
-  const value = (holder as Record<string, unknown>)[field];
+  if (!isRecord(holder)) return "";
+  const value = holder[field];
   return typeof value === "string" ? value : "";
 };
 
@@ -73,4 +74,21 @@ export const moveItem = <T>(items: readonly T[], from: number, to: number): T[] 
   const [moved] = next.splice(from, 1);
   next.splice(to, 0, moved);
   return next;
+};
+
+/**
+ * Where the selection lands after the beat at `removed` is deleted. `remaining` is the length
+ * after the removal. The selection follows the beat it was on, so deleting a row above the
+ * selected one does not silently move the user onto the next beat.
+ */
+export const selectionAfterRemove = (selected: number, removed: number, remaining: number): number =>
+  Math.max(0, Math.min(removed < selected ? selected - 1 : selected, remaining - 1));
+
+/** Where the selection lands after `moveItem(items, from, to)` — same rule, same reason. */
+export const selectionAfterMove = (selected: number, from: number, to: number, length: number): number => {
+  if (from === to || from < 0 || to < 0 || from >= length || to >= length) return selected;
+  if (selected === from) return to;
+  if (from < selected && selected <= to) return selected - 1;
+  if (to <= selected && selected < from) return selected + 1;
+  return selected;
 };
