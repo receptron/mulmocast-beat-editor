@@ -15,6 +15,7 @@ import {
   selectionAfterRemove,
   draftOwnsBeat,
   chartDataKey,
+  UNSERIALIZABLE,
 } from "../src/beatHelpers";
 
 // ─── makeBeat ───
@@ -247,4 +248,32 @@ test("draftOwnsBeat: absent, undefined, null and empty are all distinct owners",
   assert.strictEqual(draftOwnsBeat("{}", chartBeat({})), false, "empty is not absent");
   assert.strictEqual(draftOwnsBeat("{}", chartBeat({ chartData: {} })), true);
   assert.strictEqual(draftOwnsBeat('{"type":"bar"}', chartBeat({ chartData: { type: "line" } })), false);
+});
+
+// A beat arrives as a prop; a script from elsewhere can hold a value JSON cannot represent.
+// These run inside a Vue watch getter and a computed, where a throw breaks the render.
+test("chartDataKey: a value JSON cannot serialize degrades instead of throwing", () => {
+  const cycle: Record<string, unknown> = {};
+  cycle.self = cycle;
+  [
+    cycle,
+    { big: BigInt(1) },
+    {
+      get boom() {
+        throw new Error("nope");
+      },
+    },
+  ].forEach((chartData) => {
+    assert.strictEqual(chartDataKey(chartBeat({ chartData })), `json:${UNSERIALIZABLE}`);
+  });
+});
+
+// It must still be distinct from every serializable state, or a draft owns the wrong beat.
+test("chartDataKey: the unserializable key collides with nothing", () => {
+  const cycle: Record<string, unknown> = {};
+  cycle.self = cycle;
+  [undefined, null, {}, [], 0, false, "unserializable", { type: "bar" }].forEach((chartData) => {
+    assert.notStrictEqual(chartDataKey(chartBeat({ chartData })), chartDataKey(chartBeat({ chartData: cycle })), String(chartData));
+  });
+  assert.strictEqual(draftOwnsBeat('"unserializable"', chartBeat({ chartData: cycle })), false);
 });

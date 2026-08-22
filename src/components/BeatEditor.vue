@@ -1,6 +1,18 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { type EditableBeat, beatType, beatImage, chartDataKey, draftOwnsBeat, isRecord, withImageField, withNestedField, readString } from "../beatHelpers";
+import {
+  type EditableBeat,
+  beatType,
+  beatImage,
+  chartDataKey,
+  draftOwnsBeat,
+  isRecord,
+  serializeChartData,
+  UNSERIALIZABLE,
+  withImageField,
+  withNestedField,
+  readString,
+} from "../beatHelpers";
 
 /** A template cannot narrow `$event.target` from EventTarget, so it asks here. */
 const inputValue = (event: Event): string => {
@@ -72,7 +84,7 @@ watch(
 );
 
 const chartDraft = computed({
-  get: () => draft.value ?? JSON.stringify(beatImage(props.beat).chartData ?? {}, null, 2),
+  get: () => draft.value ?? serializeChartData(beatImage(props.beat).chartData ?? {}, 2) ?? UNSERIALIZABLE,
   set: (text: string) => {
     draft.value = text;
     try {

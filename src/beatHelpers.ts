@@ -105,9 +105,27 @@ export const selectionAfterMove = (selected: number, from: number, to: number, l
 export const chartDataKey = (beat: EditableBeat): string => {
   const image = beatImage(beat);
   if (!("chartData" in image)) return "absent";
-  const serialized = JSON.stringify(image.chartData);
+  const serialized = serializeChartData(image.chartData);
   return serialized === undefined ? "undefined" : `json:${serialized}`;
 };
+
+/**
+ * `JSON.stringify` for a value this editor did not create. A beat arrives as a prop, and a
+ * script loaded from elsewhere can hold a cycle or a BigInt, which throw. This runs inside a
+ * Vue watch getter and a computed, where a throw breaks the render — so it degrades to "this
+ * chart cannot be shown" instead, which is how the rest of this editor treats a beat it
+ * cannot handle.
+ */
+export const serializeChartData = (chartData: unknown, indent?: number): string | undefined => {
+  try {
+    return JSON.stringify(chartData, null, indent);
+  } catch {
+    return UNSERIALIZABLE;
+  }
+};
+
+/** Not JSON output, so no real chartData can produce it — see `chartDataKey`. */
+export const UNSERIALIZABLE = "unserializable";
 
 /**
  * Whether a chart JSON draft still belongs to the beat under it.
