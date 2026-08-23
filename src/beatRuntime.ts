@@ -122,5 +122,18 @@ export const driveRuntimes = async (container: FragmentHost, fragments: readonly
   }
 };
 
+/**
+ * Destroy whatever a container drew and forget it.
+ *
+ * A per-beat host is unmounted when its beat is deleted or the list is torn down, and
+ * Chart.js keeps a live instance per canvas until it is told otherwise. Without this the
+ * instances outlive their canvases.
+ */
+export const releaseRuntimes = (container: FragmentHost | null): void => {
+  if (!container) return;
+  state.get(container)?.charts.forEach((chart) => chart.destroy());
+  state.delete(container);
+};
+
 /** Test seam: forget which scripts have been loaded. */
 export const resetLoadedScripts = (): void => loading.clear();
