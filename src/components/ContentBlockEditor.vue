@@ -49,7 +49,7 @@ const setBulletText = (i: number, text: string) => {
 
 const addBulletItem = () => {
   if (props.block.type !== "bullets") return;
-  patch({ items: [...props.block.items, "新しい項目"] } as Partial<ContentBlock>);
+  patch({ items: [...props.block.items, "New item"] } as Partial<ContentBlock>);
 };
 
 const removeBulletItem = (i: number) => {
@@ -82,7 +82,7 @@ const removeTableRow = (r: number) => {
 };
 const addTableCol = () => {
   if (props.block.type !== "table") return;
-  const headers = (props.block.headers ?? []).concat(["新列"]);
+  const headers = (props.block.headers ?? []).concat(["New column"]);
   const rows = props.block.rows.map((row) => row.concat([""]));
   patch({ headers, rows } as Partial<ContentBlock>);
 };
@@ -246,7 +246,7 @@ const cellText = (cell: unknown): string => {
           <button type="button" class="rounded px-1 text-rose-600 hover:bg-rose-100" @click="removeBulletItem(i)">×</button>
         </li>
       </ul>
-      <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addBulletItem">+ 項目を追加</button>
+      <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addBulletItem">+ item</button>
     </template>
 
     <!-- callout -->
@@ -452,7 +452,7 @@ const cellText = (cell: unknown): string => {
         @input="patch({ label: ($event.target as HTMLInputElement).value })"
       />
       <AccentColorSelect :model-value="block.color" placeholder="color" @update:model-value="patch({ color: $event })" />
-      <p class="text-[10px] text-stone-400">section の中身は現状 JSON 編集 (将来拡張)。</p>
+      <p class="text-[10px] text-stone-400">A section's contents are edited as JSON for now.</p>
     </template>
 
     <!-- table -->
@@ -488,8 +488,8 @@ const cellText = (cell: unknown): string => {
         </tbody>
       </table>
       <div class="flex gap-2">
-        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableRow">+ 行</button>
-        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableCol">+ 列</button>
+        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableRow">+ row</button>
+        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableCol">+ column</button>
       </div>
     </template>
   </div>

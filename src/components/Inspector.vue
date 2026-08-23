@@ -80,7 +80,7 @@ const updateStat = (i: number, changes: Partial<StatsSlide["stats"][number]>) =>
 };
 const addStat = () => {
   if (props.slide.layout !== "stats") return;
-  patch<StatsSlide>({ stats: [...props.slide.stats, { value: "0", label: "新指標" }] });
+  patch<StatsSlide>({ stats: [...props.slide.stats, { value: "0", label: "New metric" }] });
 };
 const removeStat = (i: number) => {
   if (props.slide.layout !== "stats") return;
@@ -101,7 +101,7 @@ const updateTimelineItem = (i: number, changes: Partial<TimelineSlide["items"][n
 };
 const addTimelineItem = () => {
   if (props.slide.layout !== "timeline") return;
-  patch<TimelineSlide>({ items: [...props.slide.items, { date: "Qn", title: "新ステップ" }] });
+  patch<TimelineSlide>({ items: [...props.slide.items, { date: "Qn", title: "New step" }] });
 };
 const removeTimelineItem = (i: number) => {
   if (props.slide.layout !== "timeline") return;
@@ -122,7 +122,7 @@ const updateManifestoItem = (i: number, changes: Partial<ManifestoSlide["items"]
 };
 const addManifestoItem = () => {
   if (props.slide.layout !== "manifesto") return;
-  patch<ManifestoSlide>({ items: [...props.slide.items, { title: "新しい原則" }] });
+  patch<ManifestoSlide>({ items: [...props.slide.items, { title: "New principle" }] });
 };
 const removeManifestoItem = (i: number) => {
   if (props.slide.layout !== "manifesto") return;
@@ -144,7 +144,7 @@ const updateColumn = (i: number, changes: Partial<ColumnsSlide["columns"][number
 const setColumnContent = (i: number, content: ContentBlock[]) => updateColumn(i, { content: content.length ? content : undefined });
 const addColumn = () => {
   if (props.slide.layout !== "columns") return;
-  patch<ColumnsSlide>({ columns: [...props.slide.columns, { title: "新しい列" }] });
+  patch<ColumnsSlide>({ columns: [...props.slide.columns, { title: "New column" }] });
 };
 const removeColumn = (i: number) => {
   if (props.slide.layout !== "columns") return;
@@ -166,7 +166,7 @@ const updateGridItem = (i: number, changes: Partial<GridSlide["items"][number]>)
 const setGridItemContent = (i: number, content: ContentBlock[]) => updateGridItem(i, { content: content.length ? content : undefined });
 const addGridItem = () => {
   if (props.slide.layout !== "grid") return;
-  patch<GridSlide>({ items: [...props.slide.items, { title: "新項目" }] });
+  patch<GridSlide>({ items: [...props.slide.items, { title: "New item" }] });
 };
 const removeGridItem = (i: number) => {
   if (props.slide.layout !== "grid") return;
@@ -265,7 +265,7 @@ const removeTableSlideRow = (r: number) => {
 };
 const addTableSlideCol = () => {
   if (props.slide.layout !== "table") return;
-  const headers = (props.slide.headers ?? []).concat(["新列"]);
+  const headers = (props.slide.headers ?? []).concat(["New column"]);
   const rows = props.slide.rows.map((row) => row.concat([""]));
   patch<TableSlide>({ headers, rows });
 };
@@ -966,8 +966,8 @@ const tableCellText = (cell: unknown): string => {
         </tbody>
       </table>
       <div class="flex gap-2">
-        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableSlideRow">+ 行</button>
-        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableSlideCol">+ 列</button>
+        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableSlideRow">+ row</button>
+        <button type="button" class="text-[11px] text-stone-600 hover:text-stone-900" @click="addTableSlideCol">+ column</button>
       </div>
     </section>
 
