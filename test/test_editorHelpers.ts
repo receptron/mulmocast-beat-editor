@@ -263,8 +263,22 @@ test("htmlToMarkup: a closing block tag is a line boundary", () => {
   assert.equal(htmlToMarkup("<p>first</p><p>second</p>"), "first\nsecond");
   assert.equal(htmlToMarkup("<li>one</li><li>two</li>"), "one\ntwo");
   assert.equal(htmlToMarkup("<div>a</div><div><b>b</b></div>"), "a\n**b**", "the inline rules still run inside a block");
-  // A block that ends the input adds nothing — otherwise every single-line paste gains a newline.
+  // A separator that could only ever be trailing is skipped: the block that ends the input, and
+  // the last <li> before its </ul>. Otherwise every single-line paste gains a newline.
   assert.equal(htmlToMarkup("<div>x</div>"), "x");
+  assert.equal(htmlToMarkup("<ul><li>one</li><li>two</li></ul>"), "one\ntwo");
+  assert.equal(htmlToMarkup("<h1>Head</h1><p>Body</p>"), "Head\nBody");
+});
+
+test("htmlToMarkup: a closing cell is a word boundary", () => {
+  // A pasted table keeps real <td>s. Measured before this: a two-cell row arrived as "alphabeta".
+  // Cells run before blocks — once </tr> is a newline the last </td> stops looking last and
+  // would gain a stray space.
+  assert.equal(
+    htmlToMarkup("<table><tbody><tr><td>alpha</td><td>beta</td></tr><tr><td>gamma</td><td>delta</td></tr></tbody></table>"),
+    "alpha beta\ngamma delta",
+  );
+  assert.equal(htmlToMarkup("<th>h1</th><th>h2</th>"), "h1 h2");
 });
 
 test("htmlToMarkup: unknown tags are stripped to text", () => {
