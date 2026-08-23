@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ContentBlock, BulletItem } from "@mulmocast/deck";
-import { ACCENT_COLORS, BLOCK_TYPES, TEXT_SIZES, BULLET_ICONS, ALIGNS, CALLOUT_STYLES, makeBlock, clone } from "../editorHelpers";
+import AccentColorSelect from "./AccentColorSelect.vue";
+import { BLOCK_TYPES, TEXT_SIZES, BULLET_ICONS, ALIGNS, CALLOUT_STYLES, makeBlock, clone } from "../editorHelpers";
 
 const props = defineProps<{ block: ContentBlock; index: number; total: number }>();
 const emit = defineEmits<{
@@ -175,14 +176,7 @@ const cellText = (cell: unknown): string => {
         </label>
         <label class="flex items-center gap-1"
           >color
-          <select
-            :value="block.color ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">default</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="block.color" placeholder="default" @update:model-value="patch({ color: $event })" />
         </label>
         <label class="flex items-center gap-1"
           ><input type="checkbox" :checked="!!block.bold" @change="patch({ bold: ($event.target as HTMLInputElement).checked || undefined })" />bold</label
@@ -284,14 +278,7 @@ const cellText = (cell: unknown): string => {
         </label>
         <label class="flex items-center gap-1"
           >color
-          <select
-            :value="block.color ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">default</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="block.color" placeholder="default" @update:model-value="patch({ color: $event })" />
         </label>
         <label class="flex items-center gap-1"
           >size
@@ -318,14 +305,7 @@ const cellText = (cell: unknown): string => {
       />
       <label class="flex items-center gap-1 text-[11px]"
         >color
-        <select
-          :value="block.color ?? ''"
-          class="rounded border border-stone-300 bg-white px-1 py-0.5"
-          @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-        >
-          <option value="">default</option>
-          <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <AccentColorSelect :model-value="block.color" placeholder="default" @update:model-value="patch({ color: $event })" />
       </label>
     </template>
 
@@ -372,14 +352,7 @@ const cellText = (cell: unknown): string => {
           class="w-24 rounded border border-stone-300 bg-white px-2 py-1"
           @input="patch({ change: ($event.target as HTMLInputElement).value || undefined })"
         />
-        <select
-          :value="block.color ?? ''"
-          class="rounded border border-stone-300 bg-white px-1 py-0.5"
-          @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-        >
-          <option value="">color</option>
-          <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <AccentColorSelect :model-value="block.color" placeholder="color" @update:model-value="patch({ color: $event })" />
       </div>
     </template>
 
@@ -387,14 +360,7 @@ const cellText = (cell: unknown): string => {
     <template v-if="block.type === 'divider'">
       <label class="flex items-center gap-1 text-[11px]"
         >color
-        <select
-          :value="block.color ?? ''"
-          class="rounded border border-stone-300 bg-white px-1 py-0.5"
-          @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-        >
-          <option value="">default</option>
-          <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <AccentColorSelect :model-value="block.color" placeholder="default" @update:model-value="patch({ color: $event })" />
       </label>
     </template>
 
@@ -485,14 +451,7 @@ const cellText = (cell: unknown): string => {
         class="w-full rounded border border-stone-300 bg-white px-2 py-1"
         @input="patch({ label: ($event.target as HTMLInputElement).value })"
       />
-      <select
-        :value="block.color ?? ''"
-        class="rounded border border-stone-300 bg-white px-1 py-0.5"
-        @change="patch({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-      >
-        <option value="">color</option>
-        <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-      </select>
+      <AccentColorSelect :model-value="block.color" placeholder="color" @update:model-value="patch({ color: $event })" />
       <p class="text-[10px] text-stone-400">section の中身は現状 JSON 編集 (将来拡張)。</p>
     </template>
 

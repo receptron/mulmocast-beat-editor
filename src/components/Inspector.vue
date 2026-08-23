@@ -18,17 +18,8 @@ import type {
   WaterfallSlide,
   BigQuoteSlide,
 } from "@mulmocast/deck";
-import {
-  ACCENT_COLORS,
-  SLIDE_DENSITIES,
-  SLIDE_TITLE_SIZES,
-  SLIDE_SUBTITLE_SIZES,
-  LAYOUT_TYPES,
-  VALIGNS,
-  clone,
-  moveInArray,
-  makeSlide,
-} from "../editorHelpers";
+import AccentColorSelect from "./AccentColorSelect.vue";
+import { SLIDE_DENSITIES, SLIDE_TITLE_SIZES, SLIDE_SUBTITLE_SIZES, LAYOUT_TYPES, VALIGNS, clone, moveInArray, makeSlide } from "../editorHelpers";
 import ContentBlocksEditor from "./ContentBlocksEditor.vue";
 
 const props = defineProps<{ slide: SlideLayout }>();
@@ -333,14 +324,7 @@ const tableCellText = (cell: unknown): string => {
       <div class="flex flex-wrap gap-2">
         <label class="flex items-center gap-1"
           >accent
-          <select
-            :value="slide.accentColor ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="patch({ accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">—</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="slide.accentColor" @update:model-value="patch({ accentColor: $event })" />
         </label>
         <label class="flex items-center gap-1"
           >density
@@ -386,14 +370,7 @@ const tableCellText = (cell: unknown): string => {
             class="flex-1 rounded border border-stone-300 bg-white px-2 py-1"
             @input="setEyebrow({ label: ($event.target as HTMLInputElement).value })"
           />
-          <select
-            :value="slide.eyebrow?.color ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="setEyebrow({ color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">color</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="slide.eyebrow?.color" placeholder="color" @update:model-value="setEyebrow({ color: $event })" />
         </div>
       </div>
     </section>
@@ -522,14 +499,7 @@ const tableCellText = (cell: unknown): string => {
             class="rounded border border-stone-300 bg-white px-1 py-0.5"
             @input="updateStat(i, { change: ($event.target as HTMLInputElement).value || undefined })"
           />
-          <select
-            :value="s.color ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="updateStat(i, { color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">color</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="s.color" placeholder="color" @update:model-value="updateStat(i, { color: $event })" />
         </div>
       </div>
     </section>
@@ -589,14 +559,7 @@ const tableCellText = (cell: unknown): string => {
         <div class="flex flex-wrap gap-2">
           <label class="flex items-center gap-1"
             >color
-            <select
-              :value="it.color ?? ''"
-              class="rounded border border-stone-300 bg-white px-1 py-0.5"
-              @change="updateTimelineItem(i, { color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-            >
-              <option value="">—</option>
-              <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-            </select>
+            <AccentColorSelect :model-value="it.color" @update:model-value="updateTimelineItem(i, { color: $event })" />
           </label>
           <label class="flex items-center gap-1"
             ><input
@@ -672,14 +635,7 @@ const tableCellText = (cell: unknown): string => {
         />
         <label class="flex items-center gap-1"
           >accent
-          <select
-            :value="it.accentColor ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="updateManifestoItem(i, { accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">—</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="it.accentColor" @update:model-value="updateManifestoItem(i, { accentColor: $event })" />
         </label>
       </div>
     </section>
@@ -723,14 +679,7 @@ const tableCellText = (cell: unknown): string => {
             class="col-span-2 rounded border border-stone-300 bg-white px-1 py-0.5"
             @input="updateColumn(i, { title: ($event.target as HTMLInputElement).value })"
           />
-          <select
-            :value="col.accentColor ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="updateColumn(i, { accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">accent</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="col.accentColor" placeholder="accent" @update:model-value="updateColumn(i, { accentColor: $event })" />
         </div>
         <div class="grid grid-cols-3 gap-1">
           <input
@@ -774,14 +723,7 @@ const tableCellText = (cell: unknown): string => {
         <div class="flex flex-wrap gap-2">
           <label class="flex items-center gap-1"
             >accent
-            <select
-              :value="slide[side].accentColor ?? ''"
-              class="rounded border border-stone-300 bg-white px-1 py-0.5"
-              @change="updatePanel(side, { accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-            >
-              <option value="">—</option>
-              <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-            </select>
+            <AccentColorSelect :model-value="slide[side].accentColor" @update:model-value="updatePanel(side, { accentColor: $event })" />
           </label>
           <label class="flex items-center gap-1"
             >ratio
@@ -870,14 +812,7 @@ const tableCellText = (cell: unknown): string => {
           @input="updateGridItem(i, { description: ($event.target as HTMLInputElement).value || undefined })"
         />
         <div class="grid grid-cols-4 gap-1">
-          <select
-            :value="it.accentColor ?? ''"
-            class="rounded border border-stone-300 bg-white px-1 py-0.5"
-            @change="updateGridItem(i, { accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-          >
-            <option value="">accent</option>
-            <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-          </select>
+          <AccentColorSelect :model-value="it.accentColor" placeholder="accent" @update:model-value="updateGridItem(i, { accentColor: $event })" />
           <input
             type="number"
             :value="it.num ?? ''"
@@ -928,14 +863,7 @@ const tableCellText = (cell: unknown): string => {
         <div class="flex flex-wrap gap-2">
           <label class="flex items-center gap-1"
             >accent
-            <select
-              :value="slide[side]?.accentColor ?? ''"
-              class="rounded border border-stone-300 bg-white px-1 py-0.5"
-              @change="updateSplit(side, { accentColor: (($event.target as HTMLSelectElement).value || undefined) as never })"
-            >
-              <option value="">—</option>
-              <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-            </select>
+            <AccentColorSelect :model-value="slide[side]?.accentColor" @update:model-value="updateSplit(side, { accentColor: $event })" />
           </label>
           <label class="flex items-center gap-1"
             >ratio
@@ -1070,14 +998,7 @@ const tableCellText = (cell: unknown): string => {
             @input="updateFunnelStage(i, { value: ($event.target as HTMLInputElement).value })"
           />
         </div>
-        <select
-          :value="s.color ?? ''"
-          class="rounded border border-stone-300 bg-white px-1 py-0.5"
-          @change="updateFunnelStage(i, { color: (($event.target as HTMLSelectElement).value || undefined) as never })"
-        >
-          <option value="">color</option>
-          <option v-for="c in ACCENT_COLORS" :key="c" :value="c">{{ c }}</option>
-        </select>
+        <AccentColorSelect :model-value="s.color" placeholder="color" @update:model-value="updateFunnelStage(i, { color: $event })" />
       </div>
     </section>
 
