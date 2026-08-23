@@ -1,6 +1,43 @@
 # Changelog
 
-## 2.0.0 — 2026-08-23
+## @mulmocast/beat-editor 1.0.0 — 2026-08-23
+
+**The package is renamed.** `@mulmocast/deck-web` becomes `@mulmocast/beat-editor`, and the deck
+editor it was named after is gone.
+
+```diff
+- import { BeatListEditor } from "@mulmocast/deck-web";
+- import "@mulmocast/deck-web/style.css";
++ import { BeatListEditor } from "@mulmocast/beat-editor";
++ import "@mulmocast/beat-editor/style.css";
+```
+
+Nothing else changes for a caller of `BeatListEditor`, `BeatView`, `BeatEditorPane`, `Inspector`
+or the editor registry — same components, same props, same emits.
+
+`@mulmocast/deck-web@2.0.0` is the final release under the old name and is deprecated on npm.
+
+### Removed
+
+- `DeckEditor`, `MulmoScriptDeckEditor`, `DeckList`, `SlidePreview` — the iframe deck editor,
+  deprecated in 2.0.0. With them go the four things only they could do: click-to-edit text on the
+  slide, the inline bold/italic/colour toolbar, drag-and-drop reorder of in-slide list items, and
+  the FLIP animation on reorder. **Structural editing of a slide is unaffected** — that was always
+  `Inspector`, and it now runs against a div.
+- The WYSIWYG path/markup layer those components were the only callers of (`parsePath`,
+  `getByPath`, `setByPath`, `moveByPath`, `splitItemPath`, `htmlToMarkup`). None of it was
+  exported, so no public API is affected.
+
+Net: −1763 lines.
+
+### Changed
+
+- The demo is the beat editor alone, with a script picker. The sample MulmoScripts it used to
+  extract slides from are now loaded as beats directly.
+- The document-level style element is `mulmocast-beat-editor-document-styles`, renamed from
+  `mulmocast-deck-web-document-styles`. Only matters if something reached for that id.
+
+## @mulmocast/deck-web 2.0.0 — 2026-08-23
 
 The release where the beat editor becomes the package, and the deck editor becomes the part being
 retired. Everything the deck editor exported still ships and still works — this is the last version

@@ -1,10 +1,10 @@
-# @mulmocast/deck-web
+# @mulmocast/beat-editor
 
-[![npm version](https://img.shields.io/npm/v/@mulmocast/deck-web.svg)](https://www.npmjs.com/package/@mulmocast/deck-web)
-[![npm downloads](https://img.shields.io/npm/dm/@mulmocast/deck-web.svg)](https://www.npmjs.com/package/@mulmocast/deck-web)
-[![License: MIT](https://img.shields.io/npm/l/@mulmocast/deck-web.svg)](LICENSE)
-[![CI](https://github.com/receptron/mulmocast-deck-web/actions/workflows/pull_request.yaml/badge.svg)](https://github.com/receptron/mulmocast-deck-web/actions/workflows/pull_request.yaml)
-[![GitHub stars](https://img.shields.io/github/stars/receptron/mulmocast-deck-web.svg?style=social)](https://github.com/receptron/mulmocast-deck-web/stargazers)
+[![npm version](https://img.shields.io/npm/v/@mulmocast/beat-editor.svg)](https://www.npmjs.com/package/@mulmocast/beat-editor)
+[![npm downloads](https://img.shields.io/npm/dm/@mulmocast/beat-editor.svg)](https://www.npmjs.com/package/@mulmocast/beat-editor)
+[![License: MIT](https://img.shields.io/npm/l/@mulmocast/beat-editor.svg)](LICENSE)
+[![CI](https://github.com/receptron/mulmocast-beat-editor/actions/workflows/pull_request.yaml/badge.svg)](https://github.com/receptron/mulmocast-beat-editor/actions/workflows/pull_request.yaml)
+[![GitHub stars](https://img.shields.io/github/stars/receptron/mulmocast-beat-editor.svg?style=social)](https://github.com/receptron/mulmocast-beat-editor/stargazers)
 
 Vue 3 components for editing [`@mulmocast/deck`](https://www.npmjs.com/package/@mulmocast/deck) slide decks live in the browser.
 
@@ -21,7 +21,7 @@ A controlled component with no backend, no persistence and no AI — just data �
 ## Install
 
 ```bash
-yarn add @mulmocast/deck-web @mulmocast/deck vue
+yarn add @mulmocast/beat-editor @mulmocast/deck vue
 ```
 
 `vue ^3.5` and `@mulmocast/deck ^2.0.0` are peer dependencies. 2.x is the only line this package is developed and tested against.
@@ -34,8 +34,8 @@ yarn add @mulmocast/deck-web @mulmocast/deck vue
 ```vue
 <script setup lang="ts">
 import { ref } from "vue";
-import { BeatListEditor, makeBeat, type EditableBeat } from "@mulmocast/deck-web";
-import "@mulmocast/deck-web/style.css"; // required — see The stylesheet is not optional
+import { BeatListEditor, makeBeat, type EditableBeat } from "@mulmocast/beat-editor";
+import "@mulmocast/beat-editor/style.css"; // required — see The stylesheet is not optional
 
 const beats = ref<EditableBeat[]>([makeBeat("textSlide"), makeBeat("chart")]);
 </script>
@@ -54,7 +54,7 @@ Which editor opens for a beat is decided by one list. Pass your own and you can 
 ```vue
 <script setup lang="ts">
 import { ref } from "vue";
-import { BeatListEditor, defaultBeatEditors, makeBeat, type BeatEditorDefinition, type EditableBeat } from "@mulmocast/deck-web";
+import { BeatListEditor, defaultBeatEditors, makeBeat, type BeatEditorDefinition, type EditableBeat } from "@mulmocast/beat-editor";
 import MyChartEditor from "./MyChartEditor.vue";
 
 const beats = ref<EditableBeat[]>([makeBeat("chart")]);
@@ -149,12 +149,12 @@ MIT
 ## Using the beat components
 
 ```bash
-yarn add @mulmocast/deck-web @mulmocast/deck mulmocast vue
+yarn add @mulmocast/beat-editor @mulmocast/deck mulmocast vue
 ```
 
 ```ts
-import { BeatListEditor, BeatView, defaultBeatEditors } from "@mulmocast/deck-web";
-import "@mulmocast/deck-web/style.css";   // required — see below
+import { BeatListEditor, BeatView, defaultBeatEditors } from "@mulmocast/beat-editor";
+import "@mulmocast/beat-editor/style.css";   // required — see below
 ```
 
 ```vue
@@ -168,7 +168,7 @@ import "@mulmocast/deck-web/style.css";   // required — see below
 `beatToHtml` and `generateSlideFragment` emit Tailwind class names as **strings inside
 compiled JavaScript**. Tailwind honours `.gitignore`, so it never scans `node_modules` and
 your build never generates `text-[60px]` — a beat renders unstyled with no error to say so.
-`@mulmocast/deck-web/style.css` carries those utilities, generated at publish time.
+`@mulmocast/beat-editor/style.css` carries those utilities, generated at publish time.
 
 It contains **no preflight**: a component library should not reset your page. The typography a
 markdown beat expects is restored inside `.beat-fragment` at runtime, so a beat looks the same
@@ -180,7 +180,7 @@ Every editor is a component with one contract — `props: { beat }`, `emits: upd
 registered as a `BeatEditorDefinition`:
 
 ```ts
-import { defaultBeatEditors, type BeatEditorDefinition } from "@mulmocast/deck-web";
+import { defaultBeatEditors, type BeatEditorDefinition } from "@mulmocast/beat-editor";
 import MyChartEditor from "./MyChartEditor.vue";
 
 const editors: BeatEditorDefinition[] = [

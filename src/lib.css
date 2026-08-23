@@ -1,7 +1,7 @@
 /*
  * The stylesheet a consumer of this package imports:
  *
- *   import "@mulmocast/deck-web/style.css";
+ *   import "@mulmocast/beat-editor/style.css";
  *
  * It has to exist because the markup these components render is produced by `beatToHtml` and
  * `generateSlideFragment`, which emit Tailwind class names as STRINGS inside compiled

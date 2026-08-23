@@ -13,7 +13,7 @@ import { slideUtilityCss } from "@mulmocast/deck";
  * preflight has taken them away. Hosts that do not run preflight get the same result, which is
  * the point: the beat looks the same either way.
  */
-const STYLE_ID = "mulmocast-deck-web-document-styles";
+const STYLE_ID = "mulmocast-beat-editor-document-styles";
 
 const BEAT_TYPOGRAPHY = `
 .beat-fragment h1 { font-size: 1.6rem; font-weight: 700; margin: 0.4rem 0; }

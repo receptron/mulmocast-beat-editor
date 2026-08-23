@@ -1,4 +1,4 @@
-// Public API for @mulmocast/deck-web
+// Public API for @mulmocast/beat-editor
 // Composable Vue 3 components for editing @mulmocast/deck SlideLayout decks live in the browser.
 
 // The structural editor for one @mulmocast/deck layout — the `slide` beat's editor is built on it.
