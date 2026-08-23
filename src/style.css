@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* The demo renders the same fragments a consumer does, so it needs the same class list. Without
+   this the utilities that appear ONLY inside a fragment are never generated. `relative` is the one
+   whose absence shows: a movie beat's aspect box loses its positioning context, so the <video>
+   sizes itself against the viewport and the card renders blank. lib.css says why `@source` cannot
+   find these on its own. */
+@import "./fragment-classes.css";
+
 html,
 body {
   height: 100%;
