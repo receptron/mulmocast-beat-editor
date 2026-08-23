@@ -64,11 +64,11 @@ export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 export const makeBlock = (type: ContentBlock["type"]): ContentBlock => {
   switch (type) {
     case "text":
-      return { type: "text", value: "新しいテキスト" };
+      return { type: "text", value: "New text" };
     case "bullets":
-      return { type: "bullets", items: ["新しい項目"] };
+      return { type: "bullets", items: ["New item"] };
     case "callout":
-      return { type: "callout", text: "強調するテキスト" };
+      return { type: "callout", text: "Text to call out" };
     case "tag":
       return { type: "tag", text: "TAG" };
     case "code":
@@ -86,7 +86,7 @@ export const makeBlock = (type: ContentBlock["type"]): ContentBlock => {
     case "mermaid":
       return { type: "mermaid", code: "graph TD;\n  A-->B;" };
     case "section":
-      return { type: "section", label: "セクション" };
+      return { type: "section", label: "Section" };
     case "table":
       return { type: "table", headers: ["A", "B"], rows: [["1", "2"]] };
   }

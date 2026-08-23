@@ -275,7 +275,7 @@ test("makeSlide: comparison has left+right", () => {
 });
 
 test("makeBlock: text", () => {
-  assert.deepEqual(makeBlock("text"), { type: "text", value: "新しいテキスト" });
+  assert.deepEqual(makeBlock("text"), { type: "text", value: "New text" });
 });
 
 test("makeBlock: bullets has one item", () => {

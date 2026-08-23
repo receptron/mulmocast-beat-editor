@@ -42,7 +42,7 @@ const addBlock = (type: ContentBlock["type"]) => {
           }
         "
       >
-        <option value="">+ ブロック追加</option>
+        <option value="">+ Add block</option>
         <option v-for="t in BLOCK_TYPES" :key="t" :value="t">{{ t }}</option>
       </select>
     </div>
