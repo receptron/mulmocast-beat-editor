@@ -1,0 +1,27 @@
+/*
+ * The stylesheet a consumer of this package imports:
+ *
+ *   import "@mulmocast/deck-web/style.css";
+ *
+ * It has to exist because the markup these components render is produced by `beatToHtml` and
+ * `generateSlideFragment`, which emit Tailwind class names as STRINGS inside compiled
+ * JavaScript under node_modules. Tailwind honours .gitignore, so a consumer's own build never
+ * sees `text-[60px]` and never generates it — the beat renders unstyled. The class names are
+ * collected into fragment-classes.css by `yarn build:css` and named with `@source inline`,
+ * which is the only form that reaches them: an `@source` pointed at those directories
+ * generates nothing.
+ *
+ * `preflight` is deliberately absent. It is a global reset, and a component library has no
+ * business resetting its host's page. The typography a markdown fragment expects is restored
+ * inside `.beat-fragment` by documentStyles.ts, so a beat looks the same whether or not the
+ * host runs preflight.
+ */
+@layer theme, base, components, utilities;
+
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+/* Our own components' classes, which Tailwind can find by scanning. */
+@source "./";
+
+@import "./fragment-classes.css";
