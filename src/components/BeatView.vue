@@ -64,8 +64,18 @@ const editableTarget = (event: Event): HTMLElement | null => {
   return marker && surface.value.paths.has(marker.getAttribute("data-mulmo-path") ?? "") ? marker : null;
 };
 
+/**
+ * What the element held when the caret went in, so Escape can put it back.
+ *
+ * Only one element is editable at a time, so one slot is enough. Without it Escape leaves the
+ * typed text on screen while the beat still holds the old value — measured, and it reads as a
+ * saved edit rather than a discarded one.
+ */
+const htmlBeforeEdit = ref("");
+
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
+  htmlBeforeEdit.value = target.innerHTML;
   target.setAttribute("contenteditable", "true");
   if (focusIt || document.activeElement !== target) target.focus();
 };
@@ -99,13 +109,14 @@ const enterEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   startEditing(target, true);
 };
 
-/** Enter commits by blurring; Escape drops the attribute first so the commit sees nothing. */
+/** Enter commits by blurring; Escape puts back what was there and drops the attribute, so the commit sees nothing. */
 const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     target.blur();
   } else if (event.key === "Escape") {
     event.preventDefault();
+    target.innerHTML = htmlBeforeEdit.value;
     target.removeAttribute("contenteditable");
     target.blur();
   }

@@ -137,15 +137,19 @@ test("Space also starts editing", async () => {
   assert.equal(started, 1);
 });
 
-test("Escape discards what was typed", async () => {
+test("Escape discards what was typed, on screen as well as in the beat", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   clickPath(view, "title");
   typeInto(view, "title", "Discarded");
   pressOn(view, "title", "Escape");
   blurActive(view);
+  const shown = view.host.querySelector('[data-mulmo-path="title"]')?.textContent.trim();
   const count = view.emitted.length;
   view.unmount();
-  assert.equal(count, 0);
+  assert.equal(count, 0, "nothing is written");
+  // Nothing re-renders when the beat does not change, so text left behind here stays on screen
+  // and reads as a saved edit.
+  assert.equal(shown, "Before", "and nothing is left on screen either");
 });
 
 test("withEditingAffordances: marks the real elements and leaves prose alone", () => {
