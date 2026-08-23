@@ -307,9 +307,10 @@ export const htmlToMarkup = (html: string): string => {
   // Every character class below excludes `<`, and that is the rule rather than a detail: a class
   // that can cross a `<` rescans the rest of the string at each failed start, which is what made
   // this quadratic. `'<span class="text-d-primary"'.repeat(2000)` took 110s with `[^>]`; with
-  // `[^<>]` it is 0.5ms. An attribute cannot legally contain a raw `<`, so nothing is lost —
+  // `[^<>]` it is under a millisecond. An attribute cannot legally contain a raw `<`, so nothing is lost —
   // measured as 0 differences over 11,132 generated inputs against the pre-fix implementation.
-  // `test_editorHelpers.ts` fails if a `[^>]` class reappears in this file.
+  // `test_editorHelpers.ts` measures this: a family of tag-shaped inputs runs in ~2ms here and
+  // in 421-1462ms with any one of these four classes unbounded.
   for (let i = 0; i < 50; i++) {
     const before = s;
     s = s.replace(/<(strong|b)\b[^<>]*>([^<]*?)<\/\1>/gi, "**$2**");
