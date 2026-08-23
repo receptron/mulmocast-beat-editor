@@ -10,8 +10,9 @@ import { defaultBeatEditors } from "./editors/registry";
 import OutlineTextSlideEditor from "./demo/OutlineTextSlideEditor.vue";
 import { clone } from "./editorHelpers";
 
-// Two views: the slide editor, and every beat type beatToHtml renders.
-const view = ref<"editor" | "beats" | "beatEditor">("editor");
+// The beat editor leads: it renders every beat type into a div. The slide editor is the older
+// iframe path, kept so the deprecated exports stay exercised rather than rotting unrun.
+const view = ref<"editor" | "beats" | "beatEditor">("beatEditor");
 
 // A starting script for the beat editor. Separate from the slide samples, which are
 // SlideLayout[]; this is a beat array, which is the thing being edited here.
@@ -50,10 +51,10 @@ const resetSample = () => {
       <nav class="flex overflow-hidden rounded border border-stone-300">
         <button
           type="button"
-          :class="['px-2 py-1 text-xs font-medium', view === 'editor' ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100']"
-          @click="view = 'editor'"
+          :class="['px-2 py-1 text-xs font-medium', view === 'beatEditor' ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100']"
+          @click="view = 'beatEditor'"
         >
-          Slide editor
+          Beat editor
         </button>
         <button
           type="button"
@@ -69,14 +70,18 @@ const resetSample = () => {
           type="button"
           :class="[
             'border-l border-stone-300 px-2 py-1 text-xs font-medium',
-            view === 'beatEditor' ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100',
+            view === 'editor' ? 'bg-stone-700 text-white' : 'bg-white text-stone-600 hover:bg-stone-100',
           ]"
-          @click="view = 'beatEditor'"
+          title="The older iframe-based deck editor. Deprecated — kept here so it stays exercised."
+          @click="view = 'editor'"
         >
-          Beat editor
+          Slide editor (legacy)
         </button>
       </nav>
       <template v-if="view === 'editor'">
+        <span class="rounded bg-amber-100 px-1.5 py-0.5 font-semibold uppercase tracking-wider text-amber-800" title="Use the Beat editor instead"
+          >deprecated</span
+        >
         <span class="font-semibold uppercase tracking-wider text-stone-500">Sample</span>
         <select :value="sampleKey" class="rounded border border-stone-300 bg-white px-2 py-1 text-xs font-medium" @change="onSampleChange">
           <option v-for="s in SAMPLES" :key="s.key" :value="s.key">{{ s.label }}</option>
