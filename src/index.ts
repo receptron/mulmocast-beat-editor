@@ -1,22 +1,7 @@
 // Public API for @mulmocast/deck-web
 // Composable Vue 3 components for editing @mulmocast/deck SlideLayout decks live in the browser.
 
-// ─── slide deck editor (deprecated — see the beat components below) ───
-// These render each slide into an iframe, which loads chart.js, mermaid and Tailwind from a CDN
-// once per slide. The beat components below render into a div, share one copy of each runtime,
-// and cover every beat type rather than only `image.type === "slide"`.
-
-export { /** @deprecated Use `BeatListEditor`, which edits the beat array itself and covers every beat type. */ default as DeckEditor } from "./DeckEditor.vue";
-export {
-  /** @deprecated Use `BeatListEditor` — it consumes a beat array directly, so it can insert mid-deck. */ default as MulmoScriptDeckEditor,
-} from "./MulmoScriptDeckEditor.vue";
-export { /** @deprecated Use `BeatListEditor`, whose left pane lists beats of every type. */ default as DeckList } from "./components/DeckList.vue";
-export {
-  /** @deprecated Use `BeatView`, which renders a beat into a div with no per-slide CDN load. */ default as SlidePreview,
-} from "./components/SlidePreview.vue";
-
-// Not deprecated: the Inspector is the structural editor for a deck layout, and the beat editor
-// registry's `slide` editor is built on it.
+// The structural editor for one @mulmocast/deck layout — the `slide` beat's editor is built on it.
 export { default as Inspector } from "./components/Inspector.vue";
 
 // ─── beat rendering and editing ───
