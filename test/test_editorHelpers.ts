@@ -1,7 +1,5 @@
 import test from "node:test";
 import assert from "node:assert";
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 
 import {
   moveInArray,
@@ -421,76 +419,43 @@ test("htmlToMarkup: an empty bracket pair is not a tag", () => {
   assert.equal(htmlToMarkup("a<>b"), "a<>b");
 });
 
-/** Source text with block comments and whole-line `//` comments removed. */
-const codeOf = (source: string): string =>
-  source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("//"))
-    .join("\n");
-
-/**
- * What may scan a tag opener: a negated character class that excludes `<`. Written as a scan
- * rather than a regex — a guard against super-linear regexes built out of one is the wrong shape,
- * and the obvious `/^\[\^[^\]]*<[^\]]*\]/` is flagged by the very rule this file is about.
- */
-const scansTagOpenerSafely = (rest: string): boolean => {
-  if (!rest.startsWith("[^")) return false;
-  const close = rest.indexOf("]", 2);
-  return close !== -1 && rest.slice(2, close).includes("<");
-};
-
-/** Each `\b` in the source, with the characters that follow it. */
-const afterEachWordBoundary = (code: string, window: number): string[] => {
-  const found: string[] = [];
-  for (let at = code.indexOf("\\b"); at !== -1; at = code.indexOf("\\b", at + 2)) {
-    found.push(code.slice(at + 2, at + 2 + window));
-  }
-  return found;
-};
-
-test("editorHelpers: whatever scans a tag opener must be a `<`-excluding class", () => {
-  // The inverted rule, after four findings on htmlToMarkup's regexes. Three were "here is another
-  // quadratic pattern"; the fourth was that my first inversion was ITSELF an enumeration — it only
-  // looked at negated classes, so `\b[\s\S]*`, `\b.*` and `\b[a-zA-Z<]*` all walked past it.
-  //
-  // So this states the permitted FORM: after the `\b` that ends a tag name, anything which scans
-  // must be a negated class that excludes `<`. A `\b` followed by a literal is fine — that is
-  // `\btext-d-`, which reads a class attribute, not a tag opener.
-  //
-  // Scoped to openers on purpose, and the scope is measured, not assumed. The file's other two
-  // classes are linear: `class="([^"]*)"` is 9.1ms over 1MB, and parsePath's `[^.[\]]` is 3.1ms
-  // over 160k. Bounding the first to `[^<"]` is also NOT equivalent — it changes output on 4 of
-  // 8,400 generated inputs. Every other quantified regex here was measured linear too: `<br\s*\/?>`
-  // is 6.7ms over 1.7MB, and the entity decode 0.3ms over 240k.
-  //
-  // This deliberately rejects some safe regexes. That is the trade: it fails closed on a pattern
-  // nobody has written yet, which is what four rounds of case-by-case fixing did not.
-  const source = readFileSync(fileURLToPath(new URL("../src/editorHelpers.ts", import.meta.url)), "utf8");
-  const scanning = afterEachWordBoundary(codeOf(source), 40).filter((rest) => rest.startsWith("[") || rest.startsWith("."));
-  assert.ok(scanning.length >= 4, `expected the four tag-opener scans, found ${scanning.length}`);
-
-  const offenders = scanning.filter((rest) => !scansTagOpenerSafely(rest)).map((rest) => rest.slice(0, 16));
-  assert.deepEqual(offenders, [], `a tag opener must be scanned by a \`<\`-excluding negated class; got: ${offenders.join(" | ")}`);
-});
-
-test("editorHelpers: every regex is a literal, so the guard above can see all of them", () => {
-  // What closes the guard rather than patching it again. Reading source text can never catch a
-  // regex assembled at runtime — split `\b` from the scanner across a concatenation and there is
-  // nothing adjacent to match. Rather than chase constructions, this bans them: with every regex
-  // written as a literal, the check above sees every regex there is.
-  //
-  // The residual limit, stated rather than left implied: this covers `editorHelpers.ts` only. A
-  // quadratic regex in another file is not caught by anything here.
-  const code = codeOf(readFileSync(fileURLToPath(new URL("../src/editorHelpers.ts", import.meta.url)), "utf8"));
-  const constructions = ["new RegExp", "RegExp(", "String.raw"].filter((form) => code.includes(form));
-  assert.deepEqual(constructions, [], `build regexes as literals here; found: ${constructions.join(", ")}`);
-});
-
 test("htmlToMarkup: a wall of malformed known openers does not stall", () => {
   // Codex's round-2 counter-examples. With the unbounded classes these took 4.1s and 110s; the
   // point of the test is that the suite would hang rather than that a timer fires.
   assert.equal(htmlToMarkup("<strong".repeat(20000)), "<strong".repeat(20000));
   const span = '<span class="text-d-primary"'.repeat(2000);
   assert.equal(htmlToMarkup(span), span);
+});
+
+test("htmlToMarkup: no tag-shaped input is super-linear", () => {
+  // Five review rounds each found a new way to write a quadratic regex here, and each fix drew
+  // another bypass: an unbounded class, a positive wildcard, a bare `.`, a regex built by
+  // concatenation, and `\\s*` between the tag name and the class. A guard that reads the source is
+  // re-implementing a regex analyser, and it has no last case — so this measures the property and
+  // is blind to how a regex is written.
+  //
+  // Sized against a measurement, not a guess. Reverting each of the four tag-opener classes to the
+  // unbounded form one at a time costs 1462ms / 443ms / 1384ms / 421ms over this family, against a
+  // 2.2ms baseline — so the weakest regression is 190x the healthy run and the budget sits between
+  // them with room for a loaded runner. A failure also arrives in under a second rather than the
+  // 110s the worst shape used to take.
+  //
+  // Its honest limit: it catches quadratic behaviour only for the shapes below. A future regex
+  // triggered by something not in this list is not covered.
+  const shapes = [
+    "<strong".repeat(10000),
+    "<em".repeat(10000),
+    '<span class="text-d-primary"'.repeat(3200),
+    "<span".repeat(10000),
+    "<".repeat(20000),
+    ">".repeat(10000) + "<".repeat(10000),
+    "<a".repeat(10000),
+    "<b ".repeat(10000),
+  ];
+
+  const started = performance.now();
+  shapes.forEach((shape) => htmlToMarkup(shape));
+  const elapsed = performance.now() - started;
+
+  assert.ok(elapsed < 200, `htmlToMarkup took ${Math.round(elapsed)}ms over ${shapes.length} tag-shaped inputs (healthy is ~2ms); a quadratic scan is back`);
 });
