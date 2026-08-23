@@ -1,4 +1,5 @@
 import type { SlideLayout, ContentBlock, AccentColorKey } from "@mulmocast/deck";
+import { isRecord } from "./beatHelpers";
 
 /** Accent color tokens accepted by every layout / block in the deck schema. */
 export const ACCENT_COLORS: AccentColorKey[] = ["primary", "accent", "success", "warning", "danger", "info", "highlight"];
@@ -47,6 +48,16 @@ export const BLOCK_TYPES: ContentBlock["type"][] = [
 ];
 
 /** Structured-clone replacement that works for the plain-data slide objects. */
+/**
+ * A value the deck can render as a slide.
+ *
+ * `layout` is the axis every consumer switches on — `makeSlide`, the Inspector's layout
+ * picker, and the renderer itself — so it is what decides whether a value read out of a beat
+ * is a slide. A beat under edit can carry anything in `image.slide`, and the answer for those
+ * has to be "no" rather than a crash.
+ */
+export const isSlideLayout = (value: unknown): value is SlideLayout => isRecord(value) && LAYOUT_TYPES.some((layout) => layout === value.layout);
+
 export const clone = <T>(x: T): T => JSON.parse(JSON.stringify(x)) as T;
 
 /** Return a sensible default skeleton for a new content block of the given type. */
