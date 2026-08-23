@@ -24,8 +24,28 @@ iframe 版とは無関係に現行 API である。
 ## 手順
 
 1. `src/index.ts` の4つに `@deprecated` JSDoc。代替コンポーネント名を本文に書く。
-2. **`.d.ts` に `@deprecated` が載ることを確認する。** これが載らなければ消費者には何も伝わらず、
-   この変更は何も達成していない。`yarn build:lib` 後に emit された `dist/*.d.ts` を grep する。
+2. **消費者に届くことを確認する。** 載らなければこの変更は何も達成していない。
+
+   **grep では足りなかった。** 最初に書いた形は emit された `.d.ts` に `@deprecated` を4件残したが、
+   TypeScript の language service は1件も報告しなかった:
+
+   ```ts
+   /** @deprecated ... */
+   export { default as DeckEditor } from "./DeckEditor.vue";   // 🔴 消費者に届かない
+   ```
+
+   届く形は JSDoc を specifier の内側に置くもの:
+
+   ```ts
+   export { /** @deprecated ... */ default as DeckEditor } from "./DeckEditor.vue";   // 🟠 届く
+   ```
+
+   4形を language service で測った結果: 再エクスポートの上の JSDoc 🔴 / specifier 内の JSDoc 🟠 /
+   `import` してから documented な `export { X }` 🔴 / `export declare const` エイリアス 🟠。
+
+   検証は `ts.createLanguageService(...).getSuggestionDiagnostics()` を `dist/lib` に対して直接走らせ、
+   `reportsDeprecated` が立つ識別子を数える。自分で置いた `@deprecated` な CANARY を同じファイルに入れて
+   ハーネスの生存を確認すること — 「0件」はコードではなくハーネスについての主張になり得る。
 3. demo (`src/App.vue`): 初期 view を `beatEditor` に。iframe 版のタブは `Slide editor (legacy)`。
 4. README: Features / Quick start / コンポーネント表を div 版先頭に。iframe 版に deprecated 注記。
 
