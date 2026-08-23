@@ -28,7 +28,7 @@ Two editors, both controlled components with no backend, no persistence and no A
 yarn add @mulmocast/deck-web @mulmocast/deck vue
 ```
 
-`vue ^3.5` and `@mulmocast/deck ^1.0.0` are peer dependencies. The WYSIWYG editing and drag-and-drop rely on the `data-mulmo-path` / `data-mulmo-item-path` attributes, which have shipped since 0.7.0, but 1.x is the only line this package is developed and tested against.
+`vue ^3.5` and `@mulmocast/deck ^2.0.0` are peer dependencies. The `data-mulmo-path` / `data-mulmo-item-path` attributes that the deprecated WYSIWYG editing and drag-and-drop rely on have shipped since deck 0.7.0, but 2.x is the only line this package is developed and tested against.
 
 ## Usage
 ### Edit a MulmoScript's beats
