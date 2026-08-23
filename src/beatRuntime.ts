@@ -37,7 +37,10 @@ export const loadScript = (src: string): Promise<void> => {
   const started = loading.get(src);
   if (started) return started;
   const load = new Promise<void>((resolve, reject) => {
-    if (document.querySelector(`script[src="${src}"]`)) return resolve();
+    if (document.querySelector(`script[src="${src}"]`)) {
+      resolve();
+      return;
+    }
     const el = document.createElement("script");
     el.src = src;
     el.onload = () => resolve();
