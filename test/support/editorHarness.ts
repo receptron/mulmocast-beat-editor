@@ -5,7 +5,7 @@ import { dom } from "./domGlobals";
 import { build } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Component } from "vue";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -35,7 +35,9 @@ const editors: Promise<Editors> = (async () => {
       minify: false,
     },
   });
-  const loaded: unknown = await import(path.join(ROOT, OUT_DIR, "components.js"));
+  // `import()` takes a URL. A Windows absolute path is not one — Node reads the drive letter as a
+  // scheme and fails with ERR_UNSUPPORTED_ESM_URL_SCHEME ("Received protocol 'd:'").
+  const loaded: unknown = await import(pathToFileURL(path.join(ROOT, OUT_DIR, "components.js")).href);
   if (!isEditors(loaded)) throw new Error(`the harness bundle at ${OUT_DIR} exported no editors`);
   return loaded;
 })();

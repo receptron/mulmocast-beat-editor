@@ -84,3 +84,17 @@ vite を先に                 -> mount 🟢
 起動時に空の div を1つ mount し、失敗したら
 「Vue was loaded before the DOM globals」という文にして投げる。
 import 順を戻すと実際にこのメッセージが出ることを確認済み。
+
+## Windows でだけ落ちた件
+
+ビルドした bundle を `await import(path.join(...))` で読んでいた。POSIX では動くが、
+Windows の絶対パスは URL ではないので Node がドライブレターをスキームと解釈する:
+
+```
+ERR_UNSUPPORTED_ESM_URL_SCHEME
+Only URLs with a scheme in: file, data, and node are supported by the default ESM loader.
+On Windows, absolute paths must be valid file:// URLs. Received protocol 'd:'
+```
+
+`pathToFileURL(...).href` に変更。手元（macOS）とクリーンクローンでは再現しないので、
+**この修正の検証は CI の windows-latest マトリクス**。
