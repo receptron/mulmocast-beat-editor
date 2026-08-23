@@ -388,3 +388,33 @@ test("moveByPath: invalid path returns original ref", () => {
   const next = moveByPath(slide, "stats", "stats[0]");
   assert.equal(next, slide);
 });
+
+test("htmlToMarkup: input with no closing angle bracket is returned as-is", () => {
+  // The shape the scanner short-circuits on: nothing closes the `<`, so the rest is text. This is
+  // also the shape that made the old regex quadratic — see stripTagsOnce in editorHelpers.ts.
+  assert.equal(htmlToMarkup("<a"), "<a");
+  assert.equal(htmlToMarkup("a < b"), "a < b");
+  assert.equal(htmlToMarkup("<<<"), "<<<");
+  assert.equal(htmlToMarkup("<a".repeat(50)), "<a".repeat(50));
+});
+
+test("htmlToMarkup: an unclosed `<` inside a tag is swallowed with it", () => {
+  // What separates the scanner from the tempting `<[^<>]*>` rewrite: that alternative is fast but
+  // leaves `<a` behind here, differing from the original on 1,894 of 7,226 generated inputs.
+  // The scanner keeps the original's aggressive strip.
+  assert.equal(htmlToMarkup("<b><a<b>"), "");
+  assert.equal(htmlToMarkup("x<a<b>y"), "xy");
+});
+
+test("htmlToMarkup: a leading `>` does not re-open the quadratic path", () => {
+  // Codex's counter-example to my first fix, which guarded on `s.includes(">")`: this input has a
+  // `>` so the guard let the pass run, and it was still quadratic (2.4s at 40k). The scanner does
+  // not care where the `>` is.
+  assert.equal(htmlToMarkup(">" + "<".repeat(40)), ">" + "<".repeat(40));
+  assert.equal(htmlToMarkup("><b>x"), ">x");
+});
+
+test("htmlToMarkup: an empty bracket pair is not a tag", () => {
+  // `<[^>]+>` needed one or more characters between the brackets, so `<>` was never stripped.
+  assert.equal(htmlToMarkup("a<>b"), "a<>b");
+});
