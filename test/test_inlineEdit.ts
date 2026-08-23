@@ -40,9 +40,11 @@ test("applyInlineEdit: leaves every other field alone", () => {
 });
 
 test("applyInlineEdit: does not mutate the beat it was given", () => {
+  // Checking one field would pass while the call quietly rewrote another, so compare the whole beat.
   const beat = slideBeat();
+  const before = JSON.stringify(beat);
   applyInlineEdit(beat, "title", "After", offered);
-  assert.equal((beatImage(beat).slide as Record<string, unknown>).title, "Before");
+  assert.equal(JSON.stringify(beat), before);
 });
 
 test("applyInlineEdit: null rather than a blanked field when the edit cannot land", () => {

@@ -56,8 +56,15 @@ export const clickPath = (view: MountedBeat, path: string): void => {
   at(view, path).dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
 };
 
-/** Replace what the element holds, standing in for the browser's own contenteditable editing. */
-export const typeInto = (view: MountedBeat, path: string, html: string): void => {
+/**
+ * Set what the element holds, the way the browser's editing engine would have left it.
+ *
+ * NOT typing: jsdom has no contenteditable engine, so nothing here exercises the caret, an
+ * `input` event, or a formatting command. What a real click-then-type does is verified by
+ * driving the built app with a browser instead — see the PR. Anything that depends on the
+ * caret existing is outside what these tests can see.
+ */
+export const setEditedHtml = (view: MountedBeat, path: string, html: string): void => {
   at(view, path).innerHTML = html;
 };
 
@@ -69,8 +76,9 @@ export const blurActive = (view: MountedBeat): void => {
 
 /** Focus the element at `path` and press a key on it, the way a keyboard user reaches it. */
 export const pressOn = (view: MountedBeat, path: string, key: string): void => {
-  const element = view.host.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
-  if (!element) throw new Error(`no element carries data-mulmo-path="${path}"`);
+  const element = at(view, path);
+  element.focus();
+  if (dom.window.document.activeElement !== element) throw new Error(`data-mulmo-path="${path}" cannot take focus, so no keyboard user can reach it`);
   element.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key, bubbles: true }));
 };
 

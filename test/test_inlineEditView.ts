@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { mountBeatView, clickPath, typeInto, blurActive, pressOn, reachability, graftMarker, blurAsIfEditing } from "./support/beatViewHarness";
+import { mountBeatView, clickPath, setEditedHtml, blurActive, pressOn, reachability, graftMarker, blurAsIfEditing } from "./support/beatViewHarness";
 import { withEditingAffordances } from "../src/inlineEdit";
 
 /**
@@ -19,6 +19,11 @@ test("a slide beat renders the path markers the editing needs", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   const paths = [...view.host.querySelectorAll("[data-mulmo-path]")].map((el) => el.getAttribute("data-mulmo-path"));
   view.unmount();
+  // Every text field this layout has, not just the one the other tests happen to drive.
+  assert.deepEqual(
+    [...paths].sort((a, b) => (a ?? "").localeCompare(b ?? "")),
+    ["subtitle", "title"],
+  );
   assert.ok(paths.includes("title"), `expected a title marker, got ${JSON.stringify(paths)}`);
 });
 
@@ -30,10 +35,10 @@ test("clicking a marked element makes that one editable and no other", async () 
   assert.deepEqual(editable, ["title"]);
 });
 
-test("typing and blurring emits the beat with the new text", async () => {
+test("an edited element, on blur, emits the beat carrying its new text", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   clickPath(view, "title");
-  typeInto(view, "title", "After");
+  setEditedHtml(view, "title", "After");
   blurActive(view);
   const emitted = view.emitted.at(-1) as Record<string, Record<string, Record<string, unknown>>> | undefined;
   view.unmount();
@@ -42,10 +47,10 @@ test("typing and blurring emits the beat with the new text", async () => {
   assert.equal(emitted.image.slide.subtitle, "Sub", "the other fields must survive");
 });
 
-test("bold applied in the browser round-trips into deck markup", async () => {
+test("a <strong> in the edited html round-trips into deck markup", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   clickPath(view, "title");
-  typeInto(view, "title", "<strong>After</strong>");
+  setEditedHtml(view, "title", "<strong>After</strong>");
   blurActive(view);
   const emitted = view.emitted.at(-1) as Record<string, Record<string, Record<string, unknown>>> | undefined;
   view.unmount();
@@ -119,12 +124,16 @@ test("a read-only beat carries none of those attributes", async () => {
 test("Enter on a focused marker starts editing, and Enter again commits", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   pressOn(view, "title", "Enter");
+  // `pressOn` focuses first and refuses if the element cannot take focus, so reaching here at
+  // all is part of the claim: a keyboard user can get to this marker without a pointer.
+  const focused = view.host.querySelector('[data-mulmo-path="title"]') === view.host.ownerDocument.activeElement;
   const started = view.host.querySelectorAll('[contenteditable="true"]').length;
-  typeInto(view, "title", "ByKeyboard");
+  setEditedHtml(view, "title", "ByKeyboard");
   pressOn(view, "title", "Enter");
   blurActive(view);
   const emitted = view.emitted.at(-1) as Record<string, Record<string, Record<string, unknown>>> | undefined;
   view.unmount();
+  assert.equal(focused, true, "the marker must actually hold focus, not merely receive the event");
   assert.equal(started, 1, "Enter should have started editing");
   assert.equal(emitted?.image.slide.title, "ByKeyboard");
 });
@@ -140,7 +149,7 @@ test("Space also starts editing", async () => {
 test("Escape discards what was typed, on screen as well as in the beat", async () => {
   const view = await mountBeatView(slide(), { editable: true });
   clickPath(view, "title");
-  typeInto(view, "title", "Discarded");
+  setEditedHtml(view, "title", "Discarded");
   pressOn(view, "title", "Escape");
   blurActive(view);
   const shown = view.host.querySelector('[data-mulmo-path="title"]')?.textContent.trim();
@@ -181,13 +190,13 @@ test("a marker the renderer never emitted cannot write to the beat", async () =>
   graftMarker(view, "layout");
   clickPath(view, "layout");
   assert.equal(view.host.querySelector('[data-mulmo-path="layout"]')?.getAttribute("contenteditable"), null, "nor should it take a caret it cannot commit");
-  typeInto(view, "layout", "<b>broken</b>");
+  setEditedHtml(view, "layout", "<b>broken</b>");
   blurActive(view);
   assert.deepEqual(view.emitted, [], "a grafted marker must not reach the beat");
 
   // ...and the real markers still do, so this is a permit list and not a dead commit path.
   clickPath(view, "title");
-  typeInto(view, "title", "After");
+  setEditedHtml(view, "title", "After");
   blurActive(view);
   assert.equal(view.emitted.length, 1);
   view.unmount();
