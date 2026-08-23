@@ -1,4 +1,6 @@
-// Must come first: it installs the DOM globals before anything can load Vue. See domGlobals.ts.
+// Must come first: it installs the DOM globals before anything can load Vue, and proves Vue can
+// still render afterwards. See domGlobals.ts for why the ordering is load-bearing.
+import { vueCanRender } from "./vueCanary";
 import { dom } from "./domGlobals";
 import { build } from "vite";
 import vue from "@vitejs/plugin-vue";
@@ -40,25 +42,9 @@ const editors: Promise<Editors> = (async () => {
 
 export type Mounted = { selects: HTMLSelectElement[]; emitted: unknown[]; unmount: () => void };
 
-/**
- * Vue keeps the document it saw at load, so a live global is not proof it can render. Mount a bare
- * div once and turn the failure into a sentence, instead of a null dereference deep in the runtime.
- */
-const assertVueCanRender = async (): Promise<void> => {
-  const { createApp, h } = await import("vue");
-  const host = dom.window.document.createElement("div");
-  try {
-    createApp({ render: () => h("div") }).mount(host);
-  } catch (cause) {
-    throw new Error("Vue was loaded before the DOM globals — check that editorHarness.ts imports ./domGlobals first", { cause });
-  }
-};
-
-const canary: Promise<void> = assertVueCanRender();
-
 /** Mount one editor on a fresh element and hand back its selects and the values it emits. */
 export const mountEditor = async (name: EditorName, value: unknown): Promise<Mounted> => {
-  await canary;
+  await vueCanRender;
   const { createApp, h } = await import("vue");
   const component = (await editors)[name];
   const host = dom.window.document.createElement("div");
