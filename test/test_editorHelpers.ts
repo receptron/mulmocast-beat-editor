@@ -421,6 +421,34 @@ test("htmlToMarkup: an empty bracket pair is not a tag", () => {
   assert.equal(htmlToMarkup("a<>b"), "a<>b");
 });
 
+/** Source text with block comments and whole-line `//` comments removed. */
+const codeOf = (source: string): string =>
+  source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+
+/**
+ * What may scan a tag opener: a negated character class that excludes `<`. Written as a scan
+ * rather than a regex — a guard against super-linear regexes built out of one is the wrong shape,
+ * and the obvious `/^\[\^[^\]]*<[^\]]*\]/` is flagged by the very rule this file is about.
+ */
+const scansTagOpenerSafely = (rest: string): boolean => {
+  if (!rest.startsWith("[^")) return false;
+  const close = rest.indexOf("]", 2);
+  return close !== -1 && rest.slice(2, close).includes("<");
+};
+
+/** Each `\b` in the source, with the characters that follow it. */
+const afterEachWordBoundary = (code: string, window: number): string[] => {
+  const found: string[] = [];
+  for (let at = code.indexOf("\\b"); at !== -1; at = code.indexOf("\\b", at + 2)) {
+    found.push(code.slice(at + 2, at + 2 + window));
+  }
+  return found;
+};
+
 test("editorHelpers: whatever scans a tag opener must be a `<`-excluding class", () => {
   // The inverted rule, after four findings on htmlToMarkup's regexes. Three were "here is another
   // quadratic pattern"; the fourth was that my first inversion was ITSELF an enumeration — it only
@@ -439,19 +467,10 @@ test("editorHelpers: whatever scans a tag opener must be a `<`-excluding class",
   // This deliberately rejects some safe regexes. That is the trade: it fails closed on a pattern
   // nobody has written yet, which is what four rounds of case-by-case fixing did not.
   const source = readFileSync(fileURLToPath(new URL("../src/editorHelpers.ts", import.meta.url)), "utf8");
-  const code = source
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .split("\n")
-    .filter((line) => !line.trimStart().startsWith("//"))
-    .join("\n");
-
-  // What follows each `\b`, up to enough characters to hold a class.
-  const afterWordBoundary = [...code.matchAll(/\\b(.{0,40})/g)].map((m) => m[1]);
-  const scanning = afterWordBoundary.filter((rest) => rest.startsWith("[") || rest.startsWith("."));
+  const scanning = afterEachWordBoundary(codeOf(source), 40).filter((rest) => rest.startsWith("[") || rest.startsWith("."));
   assert.ok(scanning.length >= 4, `expected the four tag-opener scans, found ${scanning.length}`);
 
-  const permitted = /^\[\^[^\]]*<[^\]]*\]/;
-  const offenders = scanning.filter((rest) => !permitted.test(rest)).map((rest) => rest.slice(0, 16));
+  const offenders = scanning.filter((rest) => !scansTagOpenerSafely(rest)).map((rest) => rest.slice(0, 16));
   assert.deepEqual(offenders, [], `a tag opener must be scanned by a \`<\`-excluding negated class; got: ${offenders.join(" | ")}`);
 });
 
