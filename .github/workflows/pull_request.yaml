@@ -31,3 +31,11 @@ jobs:
       - run: yarn run lint
       - run: yarn run build
       - run: yarn run test
+      # src/fragment-classes.css is generated from the class names @mulmocast/deck and mulmocast
+      # emit, and it is committed so a consumer build does not need the generator. Nothing noticed
+      # when it fell behind a mulmocast upgrade — 30 tokens stale, and no gate could see it.
+      - name: The generated Tailwind source list is current
+        run: |
+          yarn run --silent tsx scripts/collect_fragment_classes.ts
+          git diff --exit-code -- src/fragment-classes.css \
+            || { echo '::error::src/fragment-classes.css is stale — run `yarn build:css` and commit it'; exit 1; }
