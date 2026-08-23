@@ -303,6 +303,12 @@ export const htmlToMarkup = (html: string): string => {
   // <br> → newline (does not contain children, do first).
   s = s.replace(/<br\s*\/?>/gi, "\n");
 
+  // A closing block tag is a line boundary. Chromium gives one <div> per line when multi-line
+  // text is pasted into a contenteditable, and stripping those as if they were inline glues the
+  // lines into one word run — measured, three pasted lines arrived as "line oneline twoline
+  // three". The lookahead keeps a block that ends the input from leaving a trailing newline.
+  s = s.replace(/<\/(?:div|p|h[1-6]|li|tr|blockquote|section|article)>(?=[\s\S])/gi, "\n");
+
   // Inline tags: replace innermost first. Iterate until no rule matches.
   // Every character class below excludes `<`, and that is the rule rather than a detail: a class
   // that can cross a `<` rescans the rest of the string at each failed start, which is what made

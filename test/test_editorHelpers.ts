@@ -255,6 +255,18 @@ test("htmlToMarkup: pathological broken-tag input leaves no executable tag", () 
   assert.ok(!/<[a-zA-Z][^>]*>/.test(result), `no surviving tag-like pattern in: ${result}`);
 });
 
+test("htmlToMarkup: a closing block tag is a line boundary", () => {
+  // Chromium gives one <div> per line when multi-line text is pasted into a contenteditable.
+  // Measured: three pasted lines arrived as `<div>line one</div><div>line two</div>…`, and
+  // stripping those as inline glued them into "line oneline twoline three".
+  assert.equal(htmlToMarkup("<div>line one</div><div>line two</div><div>line three</div>"), "line one\nline two\nline three");
+  assert.equal(htmlToMarkup("<p>first</p><p>second</p>"), "first\nsecond");
+  assert.equal(htmlToMarkup("<li>one</li><li>two</li>"), "one\ntwo");
+  assert.equal(htmlToMarkup("<div>a</div><div><b>b</b></div>"), "a\n**b**", "the inline rules still run inside a block");
+  // A block that ends the input adds nothing — otherwise every single-line paste gains a newline.
+  assert.equal(htmlToMarkup("<div>x</div>"), "x");
+});
+
 test("htmlToMarkup: unknown tags are stripped to text", () => {
   assert.equal(htmlToMarkup("<div>x</div>"), "x");
 });
