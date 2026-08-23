@@ -4,6 +4,7 @@ import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/bro
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
+import { ensureDocumentStyles } from "../documentStyles";
 
 /**
  * One beat, rendered as a div.
@@ -45,7 +46,10 @@ const draw = async () => {
 // The first draw waits for mount: `immediate` would run during setup, before the ref exists,
 // and since a fragment that never changes never fires the watcher again, nothing would ever
 // be drawn. flush "post" so the DOM already carries the new markup when the runtimes look.
-onMounted(() => void draw().catch(() => {}));
+onMounted(() => {
+  ensureDocumentStyles();
+  void draw().catch(() => {});
+});
 watch(html, () => void draw().catch(() => {}), { flush: "post" });
 
 onBeforeUnmount(() => releaseRuntimes(host.value));

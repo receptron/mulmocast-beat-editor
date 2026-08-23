@@ -217,3 +217,55 @@ yarn knip         # dead-code scan
 ## License
 
 MIT
+
+## Using the beat components
+
+```bash
+yarn add @mulmocast/deck-web @mulmocast/deck mulmocast vue
+```
+
+```ts
+import { BeatListEditor, BeatView, defaultBeatEditors } from "@mulmocast/deck-web";
+import "@mulmocast/deck-web/style.css";   // required — see below
+```
+
+```vue
+<BeatListEditor :beats="beats" @update:beats="beats = $event" />
+```
+
+`BeatView` renders one beat read-only; `BeatListEditor` is the list plus the editing pane.
+
+### The stylesheet is not optional
+
+`beatToHtml` and `generateSlideFragment` emit Tailwind class names as **strings inside
+compiled JavaScript**. Tailwind honours `.gitignore`, so it never scans `node_modules` and
+your build never generates `text-[60px]` — a beat renders unstyled with no error to say so.
+`@mulmocast/deck-web/style.css` carries those utilities, generated at publish time.
+
+It contains **no preflight**: a component library should not reset your page. The typography a
+markdown beat expects is restored inside `.beat-fragment` at runtime, so a beat looks the same
+whether or not your app runs preflight.
+
+### Swapping an editor
+
+Every editor is a component with one contract — `props: { beat }`, `emits: update(beat)` —
+registered as a `BeatEditorDefinition`:
+
+```ts
+import { defaultBeatEditors, type BeatEditorDefinition } from "@mulmocast/deck-web";
+import MyChartEditor from "./MyChartEditor.vue";
+
+const editors: BeatEditorDefinition[] = [
+  ...defaultBeatEditors.filter((e) => e.id !== "chart.form"),
+  { id: "chart.mine", label: "Mine", beatType: "chart", component: MyChartEditor },
+];
+```
+
+```vue
+<BeatListEditor :beats="beats" :editors="editors" @update:beats="beats = $event" />
+```
+
+A beat type may have several editors; the pane offers them as tabs. `chart` ships two — a form
+for the shape a Chart.js config almost always has, and a raw-JSON editor for everything else.
+Neither erases the other's work: the form carries `options`, plugin config and per-dataset
+styling through untouched.

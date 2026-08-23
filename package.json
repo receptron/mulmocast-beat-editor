@@ -27,7 +27,8 @@
     ".": {
       "types": "./dist/lib/index.d.ts",
       "import": "./dist/lib/index.js"
-    }
+    },
+    "./style.css": "./dist/lib/style.css"
   },
   "files": [
     "dist/lib"
@@ -38,14 +39,15 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc -b && vite build",
-    "build:lib": "BUILD_TARGET=lib vue-tsc -b && BUILD_TARGET=lib vite build",
+    "build:lib": "BUILD_TARGET=lib vue-tsc -b && BUILD_TARGET=lib vite build && yarn run build:css",
     "preview": "vite preview",
     "typecheck": "vue-tsc -b",
     "lint": "eslint src test",
     "test": "tsx --test ./test/**/test_*.ts",
     "knip": "knip",
     "format": "prettier --write '{src,test}/**/*.{ts,vue,css}'",
-    "prepublishOnly": "yarn run build:lib"
+    "prepublishOnly": "yarn run build:lib",
+    "build:css": "tsx scripts/collect_fragment_classes.ts && tailwindcss -i src/lib.css -o dist/lib/style.css --minify"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -57,6 +59,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@mulmocast/deck": "^2.0.0",
+    "@tailwindcss/cli": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@types/jsdom": "^30.0.0",
     "@types/node": "^26.2.0",
