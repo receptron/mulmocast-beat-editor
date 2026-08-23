@@ -54,3 +54,33 @@ round-trips checked 864; command selects 169; no emit 39; control gone 0
    UI としては label が空のとき select を disabled にする余地がある。仕様として別テストで固定した
 2. **`ContentBlocksEditor.vue` の "+ ブロック追加" だけ日本語** — 他の UI は全部英語
    （"+ Add slide" / "+ chip" / "+ line"）。この PR では触っていない
+
+## クリーン install でしか出なかった不具合
+
+最初の版は手元では 158/158 通り、**CI では 6 環境すべてで落ちた**。
+`Cannot read properties of null (reading 'createElement')` — しかも `document` は生きている。
+
+原因: **`@vitejs/plugin-vue` を import すると Vue の CommonJS ビルドが読み込まれる**。
+そのビルドは load 時に document を1度だけ捕まえる:
+
+```js
+const doc = typeof document !== "undefined" ? document : null;
+```
+
+jsdom の global より先に読まれると `doc` は永久に null。ES の import は巻き上げられるので、
+ファイル先頭に文を書いても sibling の import より先には走らない。**別モジュールに切り出して
+最初に import する**しかない（`test/support/domGlobals.ts`）。
+
+warm な `node_modules` では起きず、`git clone` + `yarn install --frozen-lockfile` で再現した。
+二分探索で犯人を確定:
+
+```
+何も import しない          -> mount 🟢
+vite を先に                 -> mount 🟢
+@vitejs/plugin-vue を先に   -> mount 🔴
+```
+
+順序が load-bearing なので、戻ったときに黙って壊れないよう **canary** を置いた。
+起動時に空の div を1つ mount し、失敗したら
+「Vue was loaded before the DOM globals」という文にして投げる。
+import 順を戻すと実際にこのメッセージが出ることを確認済み。

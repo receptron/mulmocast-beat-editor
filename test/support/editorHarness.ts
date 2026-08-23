@@ -1,6 +1,7 @@
+// Must come first: it installs the DOM globals before anything can load Vue. See domGlobals.ts.
+import { dom } from "./domGlobals";
 import { build } from "vite";
 import vue from "@vitejs/plugin-vue";
-import { JSDOM } from "jsdom";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import type { Component } from "vue";
@@ -37,36 +38,27 @@ const editors: Promise<Editors> = (async () => {
   return loaded;
 })();
 
-/**
- * `<select :value>` sets a DOM property, so an SSR-rendered select carries no `selected`
- * attribute and its current value is invisible in the HTML. Reading it back needs a real DOM.
- */
-const dom = new JSDOM("<!doctype html><body></body>", { pretendToBeVisual: true });
-const scoped: Record<string, unknown> = dom.window;
-const GLOBALS = [
-  "window",
-  "document",
-  "HTMLElement",
-  "SVGElement",
-  "Element",
-  "Node",
-  "Event",
-  "CustomEvent",
-  "HTMLInputElement",
-  "HTMLSelectElement",
-  "HTMLTextAreaElement",
-  "getComputedStyle",
-  "requestAnimationFrame",
-  "cancelAnimationFrame",
-];
-GLOBALS.forEach((name) => {
-  Object.defineProperty(globalThis, name, { value: name === "window" ? dom.window : scoped[name], configurable: true, writable: true });
-});
-
 export type Mounted = { selects: HTMLSelectElement[]; emitted: unknown[]; unmount: () => void };
+
+/**
+ * Vue keeps the document it saw at load, so a live global is not proof it can render. Mount a bare
+ * div once and turn the failure into a sentence, instead of a null dereference deep in the runtime.
+ */
+const assertVueCanRender = async (): Promise<void> => {
+  const { createApp, h } = await import("vue");
+  const host = dom.window.document.createElement("div");
+  try {
+    createApp({ render: () => h("div") }).mount(host);
+  } catch (cause) {
+    throw new Error("Vue was loaded before the DOM globals — check that editorHarness.ts imports ./domGlobals first", { cause });
+  }
+};
+
+const canary: Promise<void> = assertVueCanRender();
 
 /** Mount one editor on a fresh element and hand back its selects and the values it emits. */
 export const mountEditor = async (name: EditorName, value: unknown): Promise<Mounted> => {
+  await canary;
   const { createApp, h } = await import("vue");
   const component = (await editors)[name];
   const host = dom.window.document.createElement("div");
