@@ -1,7 +1,17 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { mountBeatView, clickPath, setEditedHtml, blurActive, pressOn, reachability, graftMarker, blurAsIfEditing } from "./support/beatViewHarness";
+import {
+  mountBeatView,
+  clickPath,
+  setEditedHtml,
+  blurActive,
+  pressOn,
+  pressWhileComposing,
+  reachability,
+  graftMarker,
+  blurAsIfEditing,
+} from "./support/beatViewHarness";
 import { withEditingAffordances } from "../src/inlineEdit";
 
 /**
@@ -215,5 +225,32 @@ test("a commit is refused for a path the current render does not offer", async (
   graftMarker(view, "layout");
   blurAsIfEditing(view, "layout", "<b>prose</b>");
   assert.deepEqual(view.emitted, [], "only what the render offered may be written");
+  view.unmount();
+});
+
+test("a key pressed mid-conversion belongs to the IME, not the editor", async () => {
+  // Confirming an IME candidate sends Enter. Treating it as "done editing" commits the
+  // unconverted reading and drops the caret — once per 文節 for anyone typing Japanese.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "にほんご");
+  pressWhileComposing(view, "title", "Enter");
+  const stillEditing = view.host.querySelector('[data-mulmo-path="title"]')?.getAttribute("contenteditable");
+  assert.equal(stillEditing, "true", "the conversion must survive its own confirmation key");
+  assert.deepEqual(view.emitted, [], "and nothing is written mid-conversion");
+
+  // Once the conversion is over, the same key commits as usual.
+  pressOn(view, "title", "Enter");
+  blurActive(view);
+  assert.equal(view.emitted.length, 1);
+  view.unmount();
+});
+
+test("Escape mid-conversion abandons the candidate, not the edit", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "にほんご");
+  pressWhileComposing(view, "title", "Escape");
+  assert.equal(view.host.querySelector('[data-mulmo-path="title"]')?.getAttribute("contenteditable"), "true");
   view.unmount();
 });

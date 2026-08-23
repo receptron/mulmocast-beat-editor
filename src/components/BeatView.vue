@@ -123,6 +123,10 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
 };
 
 const onKeydown = (event: KeyboardEvent) => {
+  // An IME sends Enter to confirm a candidate and Escape to abandon one. Those belong to the
+  // conversion, not to the editor: without this, confirming 変換 ends the edit and commits the
+  // unconverted reading, once per 文節.
+  if (event.isComposing) return;
   const target = editableTarget(event);
   if (!target) return;
   if (target.getAttribute("contenteditable") === "true") leaveEditing(event, target);

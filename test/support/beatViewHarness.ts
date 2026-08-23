@@ -74,6 +74,12 @@ export const blurActive = (view: MountedBeat): void => {
   editing?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true }));
 };
 
+/** Press a key at `path` while an IME conversion is running, as a candidate confirmation does. */
+export const pressWhileComposing = (view: MountedBeat, path: string, key: string): void => {
+  const element = at(view, path);
+  element.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key, bubbles: true, isComposing: true }));
+};
+
 /** Focus the element at `path` and press a key on it, the way a keyboard user reaches it. */
 export const pressOn = (view: MountedBeat, path: string, key: string): void => {
   const element = at(view, path);
