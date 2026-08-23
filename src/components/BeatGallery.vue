@@ -66,7 +66,9 @@ watch(rendered, () => {
       .beat-fragment h1 { font-size: 1.75rem; font-weight: 700; margin: 0.5rem 0; } .beat-fragment h2 { font-size: 1.4rem; font-weight: 700; margin: 0.5rem 0; }
       .beat-fragment h3 { font-size: 1.15rem; font-weight: 600; margin: 0.4rem 0; } .beat-fragment p { margin: 0.5rem 0; } .beat-fragment ul { list-style: disc;
       padding-left: 1.5rem; margin: 0.5rem 0; } .beat-fragment ol { list-style: decimal; padding-left: 1.5rem; margin: 0.5rem 0; } .beat-fragment li { margin:
-      0.15rem 0; } .beat-fragment code { background: #f5f5f4; padding: 0.1rem 0.3rem; border-radius: 0.2rem; }
+      0.15rem 0; } .beat-fragment code { background: #f5f5f4; padding: 0.1rem 0.3rem; border-radius: 0.2rem; } /* The swipe `elements` form wraps itself in
+      height:100%, so it collapses unless the host gives it a box. The wrapper carries no class or data attribute, so its inline style is the only handle there
+      is. */ .beat-fragment:has(> div[style*="height:100%"]) { height: 260px; }
     </component>
 
     <!-- The css each fragment declares, attached once. Fragments scope their own rules. -->

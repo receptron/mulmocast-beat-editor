@@ -47,6 +47,33 @@ export const ALL_BEAT_TYPES: BeatSample[] = [
     },
   },
   {
+    label: "markdown (row-2)",
+    note: "Two side-by-side slots. Each slot is a string or an array of lines; both render the same.",
+    beat: {
+      text: "Markdown split into two columns.",
+      image: {
+        type: "markdown",
+        markdown: {
+          header: "## Two up",
+          "row-2": ["### Left\n\n- one\n- two", ["### Right", "", "Written as an array of lines."]],
+        },
+      },
+    },
+  },
+  {
+    label: "markdown (2x2)",
+    note: "Four slots in a grid. The frame (header / sidebar-left) is optional and independent of the main.",
+    beat: {
+      text: "Markdown in a four-slot grid.",
+      image: {
+        type: "markdown",
+        markdown: {
+          "2x2": ["**Top left**", "**Top right**", "**Bottom left**", "**Bottom right**"],
+        },
+      },
+    },
+  },
+  {
     label: "markdown (mermaid fence)",
     note: 'A ```mermaid fence becomes a diagram, and the fragment sets requires: ["mermaid"].',
     beat: {
@@ -146,6 +173,23 @@ export const ALL_BEAT_TYPES: BeatSample[] = [
       image: {
         type: "html_tailwind",
         html: '<div class="rounded-lg border border-stone-300 bg-white p-4"><p class="text-sm font-semibold text-stone-700">Author markup</p><p class="mt-1 text-xs text-stone-500">This beat type is raw HTML by design.</p></div>',
+      },
+    },
+  },
+  {
+    label: "html_tailwind (elements)",
+    // The driver that animates these needs script execution, which a fragment injected
+    // through innerHTML cannot do — so a browser shows the elements where they start.
+    note: "Swipe-style declarative elements instead of html. Shown at rest: the animation driver is a script, which fragments do not carry.",
+    beat: {
+      text: "Declarative elements rather than markup.",
+      image: {
+        type: "html_tailwind",
+        elements: [
+          { id: "canvas", w: "100%", h: "100%", bc: "linear-gradient(135deg, #e7e5e4 0%, #f5f5f4 100%)" },
+          { id: "headline", text: "Elements, not markup", fontSize: "32px", fontWeight: "700", textColor: "#1c1917", pos: ["50%", "38%"] },
+          { id: "caption", text: "positioned by pos / w / h, styled by bc / textColor", fontSize: "14px", textColor: "#57534e", pos: ["50%", "56%"] },
+        ],
       },
     },
   },

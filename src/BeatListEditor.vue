@@ -65,7 +65,9 @@ const move = (index: number, delta: number) => {
       0.1rem 0; } .beat-fragment code { background: #f5f5f4; padding: 0.1rem 0.3rem; border-radius: 0.2rem; } /* A chart card is sized for a slide (400px tall);
       in a list that is mostly empty space. */ .beat-fragment .chart-container > div { height: 220px !important; } .beat-fragment img, .beat-fragment video {
       max-height: 240px; width: auto; } /* A slide fragment is w-full h-full and designed at 1280px, so it needs a box to fill. */ .beat-fragment >
-      .relative.overflow-hidden { height: 300px; }
+      .relative.overflow-hidden { height: 300px; } /* The swipe `elements` form wraps itself in height:100%, so it collapses unless the host gives it a box. The
+      wrapper carries no class or data attribute, so its inline style is the only handle there is. The height goes on the PARENT: an inline height:100% beats
+      any stylesheet rule on the element itself. */ .beat-fragment:has(> div[style*="height:100%"]) { height: 260px; }
     </component>
 
     <!-- list -->
