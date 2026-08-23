@@ -474,6 +474,19 @@ test("editorHelpers: whatever scans a tag opener must be a `<`-excluding class",
   assert.deepEqual(offenders, [], `a tag opener must be scanned by a \`<\`-excluding negated class; got: ${offenders.join(" | ")}`);
 });
 
+test("editorHelpers: every regex is a literal, so the guard above can see all of them", () => {
+  // What closes the guard rather than patching it again. Reading source text can never catch a
+  // regex assembled at runtime — split `\b` from the scanner across a concatenation and there is
+  // nothing adjacent to match. Rather than chase constructions, this bans them: with every regex
+  // written as a literal, the check above sees every regex there is.
+  //
+  // The residual limit, stated rather than left implied: this covers `editorHelpers.ts` only. A
+  // quadratic regex in another file is not caught by anything here.
+  const code = codeOf(readFileSync(fileURLToPath(new URL("../src/editorHelpers.ts", import.meta.url)), "utf8"));
+  const constructions = ["new RegExp", "RegExp(", "String.raw"].filter((form) => code.includes(form));
+  assert.deepEqual(constructions, [], `build regexes as literals here; found: ${constructions.join(", ")}`);
+});
+
 test("htmlToMarkup: a wall of malformed known openers does not stall", () => {
   // Codex's round-2 counter-examples. With the unbounded classes these took 4.1s and 110s; the
   // point of the test is that the suite would hang rather than that a timer fires.
