@@ -1,6 +1,7 @@
 import type { SlideLayout, SlideTheme } from "@mulmocast/deck";
 import { sampleDeck, defaultTheme } from "./sampleDeck";
 import bootcampScript from "./bootcamp_v2_kickoff.json";
+import showcaseScript from "./slide_deck_showcase.json";
 
 /**
  * Pull slides + theme out of a MulmoScript-shaped object.
@@ -30,6 +31,7 @@ export type SampleDeck = {
 };
 
 const bootcamp = fromMulmoScript(bootcampScript);
+const showcase = fromMulmoScript(showcaseScript);
 
 /** Registered samples in picker order. The first one is the initial deck. */
 export const SAMPLES: SampleDeck[] = [
@@ -39,6 +41,15 @@ export const SAMPLES: SampleDeck[] = [
     description: "4 slides showcasing title / stats / comparison / bigQuote.",
     slides: sampleDeck,
     theme: defaultTheme,
+  },
+  {
+    key: "showcase",
+    label: "Layout showcase (12 slides)",
+    // The one layout it omits is manifesto, which the BootCamp sample carries — so between
+    // the two the picker reaches all thirteen.
+    description: "One slide per layout: title / bigQuote / columns / comparison / grid / stats / timeline / split / matrix / table / funnel / waterfall.",
+    slides: showcase.slides,
+    theme: showcase.theme ?? defaultTheme,
   },
   {
     key: "bootcamp",
