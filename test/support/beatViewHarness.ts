@@ -80,3 +80,28 @@ export const reachability = (view: MountedBeat, path: string): Record<string, st
   if (!element) throw new Error(`no element carries data-mulmo-path="${path}"`);
   return { tabindex: element.getAttribute("tabindex"), role: element.getAttribute("role"), label: element.getAttribute("aria-label") };
 };
+
+/**
+ * Add a marker the renderer never emitted, standing in for one that reached the DOM some other
+ * way. What a commit may write is decided by what was rendered, not by what the DOM now says.
+ */
+export const graftMarker = (view: MountedBeat, path: string): void => {
+  const element = dom.window.document.createElement("p");
+  element.setAttribute("data-mulmo-path", path);
+  element.textContent = "grafted";
+  view.host.appendChild(element);
+};
+
+/**
+ * Blur an element that is already editable, without going through a click.
+ *
+ * Stands in for the caret having been placed while the path was still offered and the beat
+ * having changed underneath before the blur — the only way a commit sees a path the current
+ * render does not offer.
+ */
+export const blurAsIfEditing = (view: MountedBeat, path: string, html: string): void => {
+  const element = at(view, path);
+  element.setAttribute("contenteditable", "true");
+  element.innerHTML = html;
+  element.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true }));
+};

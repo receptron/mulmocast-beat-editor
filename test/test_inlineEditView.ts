@@ -1,7 +1,8 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { mountBeatView, clickPath, typeInto, blurActive, pressOn, reachability } from "./support/beatViewHarness";
+import { mountBeatView, clickPath, typeInto, blurActive, pressOn, reachability, graftMarker, blurAsIfEditing } from "./support/beatViewHarness";
+import { withEditingAffordances } from "../src/inlineEdit";
 
 /**
  * Click-to-edit, driven through a real mount.
@@ -145,4 +146,61 @@ test("Escape discards what was typed", async () => {
   const count = view.emitted.length;
   view.unmount();
   assert.equal(count, 0);
+});
+
+test("withEditingAffordances: marks the real elements and leaves prose alone", () => {
+  // The defect this replaced: a regex over `data-mulmo-path="…"` also rewrote that text when a
+  // user TYPED it into a slide, so a title of `data-mulmo-path="injected"` rendered showing
+  // `tabindex="0"` as visible prose. Parsing means an attribute only lands on an element.
+  const marked = withEditingAffordances('<p data-mulmo-path="title">hello</p>');
+  assert.match(marked.html, /tabindex="0"/);
+  assert.match(marked.html, /role="textbox"/);
+  assert.match(marked.html, /aria-label="Edit title"/);
+  assert.deepEqual([...marked.paths], ["title"], "the same pass records what may be written");
+
+  const prose = withEditingAffordances('<p data-mulmo-path="title">data-mulmo-path="typed by a user"</p>');
+  assert.equal((prose.html.match(/tabindex="0"/g) ?? []).length, 1, "the typed text must not become an attribute");
+  assert.deepEqual([...prose.paths], ["title"], "nor become a writable path");
+});
+
+test("withEditingAffordances: an element that already has a tabindex is not given two", () => {
+  const out = withEditingAffordances('<p data-mulmo-path="a" tabindex="-1">x</p>').html;
+  assert.equal((out.match(/tabindex=/g) ?? []).length, 1);
+  assert.match(out, /tabindex="0"/);
+});
+
+test("a marker the renderer never emitted cannot write to the beat", async () => {
+  // The permit list only protects anything if the commit consults the set that was RENDERED.
+  // `layout` exists on every slide, so a marker naming it would otherwise write prose into the
+  // field that decides how the slide is drawn.
+  const view = await mountBeatView(slide(), { editable: true });
+  graftMarker(view, "layout");
+  clickPath(view, "layout");
+  assert.equal(view.host.querySelector('[data-mulmo-path="layout"]')?.getAttribute("contenteditable"), null, "nor should it take a caret it cannot commit");
+  typeInto(view, "layout", "<b>broken</b>");
+  blurActive(view);
+  assert.deepEqual(view.emitted, [], "a grafted marker must not reach the beat");
+
+  // ...and the real markers still do, so this is a permit list and not a dead commit path.
+  clickPath(view, "title");
+  typeInto(view, "title", "After");
+  blurActive(view);
+  assert.equal(view.emitted.length, 1);
+  view.unmount();
+});
+
+test("withEditingAffordances: an empty path is offered to nobody", () => {
+  const out = withEditingAffordances('<p data-mulmo-path="">x</p>');
+  assert.deepEqual([...out.paths], [], "an empty path names no field, so nothing may write through it");
+  assert.doesNotMatch(out.html, /tabindex/, "nor should it read as editable");
+});
+
+test("a commit is refused for a path the current render does not offer", async () => {
+  // The click gate and the write gate are separate on purpose: the caret can be placed while a
+  // path is offered and the beat can change before the blur. This drives the write gate alone.
+  const view = await mountBeatView(slide(), { editable: true });
+  graftMarker(view, "layout");
+  blurAsIfEditing(view, "layout", "<b>prose</b>");
+  assert.deepEqual(view.emitted, [], "only what the render offered may be written");
+  view.unmount();
 });

@@ -22,20 +22,18 @@ export const isInlineEditable = (beat: EditableBeat): boolean => {
 /**
  * The beat with `path` inside its slide set to the markup form of `html`.
  *
- * Returns null when the edit cannot be applied — not a slide beat, an empty path, or a path
- * that does not exist in this slide. Null means "leave the beat alone", never "clear the field":
- * `setByPath` answers with the original object for a path it cannot walk, and telling that apart
- * from a real no-op edit is what stops a mis-read attribute from silently blanking a slide.
+ * `offered` is the set of paths the renderer marked editable — {@link withEditingAffordances}
+ * hands back exactly that, from the same pass that adds the affordances. A path outside it is
+ * refused: "the path exists" is not enough, because `layout` exists and writing prose into it
+ * breaks the slide (measured — it took `"**x**"` before this was a permitted set).
+ *
+ * Returns null when the edit cannot be applied. Null means "leave the beat alone", never "clear
+ * the field": telling a refused path apart from a real no-op edit is what stops a mis-read
+ * attribute from silently blanking a slide.
  */
-export const applyInlineEdit = (beat: EditableBeat, path: string, html: string): EditableBeat | null => {
-  if (!path || !isInlineEditable(beat)) return null;
+export const applyInlineEdit = (beat: EditableBeat, path: string, html: string, offered: ReadonlySet<string>): EditableBeat | null => {
+  if (!offered.has(path) || !isInlineEditable(beat)) return null;
   const slide = beatImage(beat)["slide"];
-  // The path must already name something in this slide. `setByPath` walks the parents and gives
-  // up on a missing one, but a single-segment path has no parents to walk — `nope` would be
-  // ADDED, and `layout` would be overwritten with prose. Every marker the renderer emits points
-  // at a value that exists, so requiring one rejects only paths that should not have been read:
-  // measured at 33 markers across all 13 layouts, none blocked.
-  if (getByPath(slide, path) === undefined) return null;
   const markup = htmlToMarkup(html);
   // Blur fires whether or not anything was typed, and `setByPath` deep-clones, so identity
   // cannot tell an untouched field from an edited one. Compare the value instead: without this
@@ -48,13 +46,36 @@ export const applyInlineEdit = (beat: EditableBeat, path: string, html: string):
   return withImageField(beat, "slide", next);
 };
 
+/** A fragment ready to edit, and the only paths an edit to it may write. */
+export type EditingSurface = { html: string; paths: ReadonlySet<string> };
+
 /**
- * The sanitized fragment with each editable leaf made keyboard-reachable.
+ * The sanitized fragment with each editable leaf made keyboard-reachable, and the paths it offers.
  *
- * Done to the markup rather than to the DOM afterwards. The elements come from `v-html`, so
- * anything applied by hand has to be re-applied every time Vue replaces the content — and the
- * component's element ref is not a reliable place to hang that from. Rendering the attributes
- * means they cannot fall out of step with what is on screen.
+ * The two come from one pass on purpose: the pass that makes a path editable is the pass that
+ * records it as permitted, so the permit list cannot drift from what the reader can actually
+ * reach. `applyInlineEdit` refuses anything else, which fails closed for a path nobody rendered.
+ *
+ * Applied to a parsed document rather than by rewriting the string. A regex over
+ * `data-mulmo-path="…"` also matches that text when a user TYPES it into a slide — measured:
+ * a title of `data-mulmo-path="injected"` came back showing `tabindex="0"` as visible prose.
+ * Parsing means an attribute is only ever added to something that is already an element.
+ *
+ * Rendered rather than applied to the live DOM afterwards, because the content comes from
+ * `v-html`: attributes that are part of what Vue renders cannot fall out of step with it.
  */
-export const withEditingAffordances = (html: string): string =>
-  html.replace(/data-mulmo-path="([^"]*)"/g, (whole, path: string) => `${whole} tabindex="0" role="textbox" aria-label="Edit ${path}"`);
+export const withEditingAffordances = (html: string): EditingSurface => {
+  const paths = new Set<string>();
+  if (typeof document === "undefined") return { html, paths };
+  const holder = document.createElement("template");
+  holder.innerHTML = html;
+  holder.content.querySelectorAll("[data-mulmo-path]").forEach((element) => {
+    const path = element.getAttribute("data-mulmo-path") ?? "";
+    if (!path) return;
+    paths.add(path);
+    element.setAttribute("tabindex", "0");
+    element.setAttribute("role", "textbox");
+    element.setAttribute("aria-label", `Edit ${path}`);
+  });
+  return { html: holder.innerHTML, paths };
+};

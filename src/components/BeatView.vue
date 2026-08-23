@@ -5,7 +5,7 @@ import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
-import { applyInlineEdit, isInlineEditable, withEditingAffordances } from "../inlineEdit";
+import { applyInlineEdit, isInlineEditable, withEditingAffordances, type EditingSurface } from "../inlineEdit";
 
 /**
  * One beat, rendered as a div.
@@ -41,16 +41,27 @@ const fragment = computed<BeatHtmlFragment | undefined>(() => {
 
 const editing = computed(() => props.editable && isInlineEditable(props.beat));
 
+/** No path may be written while the beat is not editable. */
+const NO_PATHS: ReadonlySet<string> = new Set();
+
 const sanitized = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
 
-const html = computed(() => (editing.value ? withEditingAffordances(sanitized.value) : sanitized.value));
+const surface = computed<EditingSurface>(() => (editing.value ? withEditingAffordances(sanitized.value) : { html: sanitized.value, paths: NO_PATHS }));
+const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
 
-/** The `[data-mulmo-path]` element a pointer or key event happened inside, if any. */
+/**
+ * The editable element a pointer or key event happened inside, if any.
+ *
+ * A marker only counts when the render offered its path. Without that an element the DOM merely
+ * claims is editable would take a caret and then drop the edit on blur, which reads as the app
+ * losing what was typed.
+ */
 const editableTarget = (event: Event): HTMLElement | null => {
   const from = event.target;
-  return from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
+  const marker = from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
+  return marker && surface.value.paths.has(marker.getAttribute("data-mulmo-path") ?? "") ? marker : null;
 };
 
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
@@ -77,7 +88,7 @@ const commit = (event: FocusEvent) => {
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
   target.removeAttribute("contenteditable");
-  const next = applyInlineEdit(props.beat, path, html);
+  const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);
 };
 
