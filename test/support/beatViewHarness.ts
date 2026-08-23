@@ -8,6 +8,12 @@ import type { EditableBeat } from "../../src/beatHelpers";
  *
  * Reuses the bundle and jsdom window the editor harness already builds — a second `vite` build
  * per run buys nothing, and a second jsdom would give Vue a document it did not capture at load.
+ *
+ * KNOWN BLIND SPOT: mounted this way, BeatView's `ref="host"` lands on a vnode Vue treats as
+ * hoisted and `host.value` stays null, so anything reached through it — `driveRuntimes`, which
+ * draws chart.js and mermaid — does nothing here. That is the harness, not the component: the
+ * production build draws them (measured, 2 canvases at real size and 2 mermaid SVGs in
+ * `yarn build` + `vite preview`). Nothing in these tests may depend on that ref.
  */
 export type MountedBeat = {
   host: HTMLElement;
@@ -59,4 +65,18 @@ export const typeInto = (view: MountedBeat, path: string, html: string): void =>
 export const blurActive = (view: MountedBeat): void => {
   const editing = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
   editing?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true }));
+};
+
+/** Focus the element at `path` and press a key on it, the way a keyboard user reaches it. */
+export const pressOn = (view: MountedBeat, path: string, key: string): void => {
+  const element = view.host.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
+  if (!element) throw new Error(`no element carries data-mulmo-path="${path}"`);
+  element.dispatchEvent(new dom.window.KeyboardEvent("keydown", { key, bubbles: true }));
+};
+
+/** The attributes that decide whether a marker is reachable without a mouse. */
+export const reachability = (view: MountedBeat, path: string): Record<string, string | null> => {
+  const element = view.host.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
+  if (!element) throw new Error(`no element carries data-mulmo-path="${path}"`);
+  return { tabindex: element.getAttribute("tabindex"), role: element.getAttribute("role"), label: element.getAttribute("aria-label") };
 };

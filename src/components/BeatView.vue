@@ -5,7 +5,7 @@ import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
-import { applyInlineEdit, isInlineEditable } from "../inlineEdit";
+import { applyInlineEdit, isInlineEditable, withEditingAffordances } from "../inlineEdit";
 
 /**
  * One beat, rendered as a div.
@@ -39,11 +39,13 @@ const fragment = computed<BeatHtmlFragment | undefined>(() => {
   }
 });
 
-const html = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
+const editing = computed(() => props.editable && isInlineEditable(props.beat));
+
+const sanitized = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
+
+const html = computed(() => (editing.value ? withEditingAffordances(sanitized.value) : sanitized.value));
 
 const host = ref<HTMLElement | null>(null);
-
-const editing = computed(() => props.editable && isInlineEditable(props.beat));
 
 /** The `[data-mulmo-path]` element a pointer or key event happened inside, if any. */
 const editableTarget = (event: Event): HTMLElement | null => {
@@ -51,14 +53,17 @@ const editableTarget = (event: Event): HTMLElement | null => {
   return from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
 };
 
+const startEditing = (target: HTMLElement, focusIt: boolean) => {
+  if (target.getAttribute("contenteditable") === "true") return;
+  target.setAttribute("contenteditable", "true");
+  if (focusIt || document.activeElement !== target) target.focus();
+};
+
 const beginEdit = (event: MouseEvent) => {
   if (!editing.value) return;
   const target = editableTarget(event);
-  if (!target || target.getAttribute("contenteditable") === "true") return;
-  target.setAttribute("contenteditable", "true");
-  // The click already places the caret; focusing again would move it to the start. Only step in
-  // when the click did not take focus at all.
-  if (document.activeElement !== target) target.focus();
+  // The click already places the caret; focusing again would move it to the start.
+  if (target) startEditing(target, false);
 };
 
 /**
@@ -76,18 +81,30 @@ const commit = (event: FocusEvent) => {
   if (next) emit("update", next);
 };
 
-const onKeydown = (event: KeyboardEvent) => {
-  const target = editableTarget(event);
-  if (!target || target.getAttribute("contenteditable") !== "true") return;
+/** Enter or Space on a focused-but-not-yet-editing element is the keyboard equivalent of a click. */
+const enterEditing = (event: KeyboardEvent, target: HTMLElement): void => {
+  if (!editing.value || (event.key !== "Enter" && event.key !== " ")) return;
+  event.preventDefault();
+  startEditing(target, true);
+};
+
+/** Enter commits by blurring; Escape drops the attribute first so the commit sees nothing. */
+const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   if (event.key === "Enter" && !event.shiftKey) {
     event.preventDefault();
     target.blur();
   } else if (event.key === "Escape") {
     event.preventDefault();
-    // Drop the attribute first so the blur handler has nothing to commit — Escape discards.
     target.removeAttribute("contenteditable");
     target.blur();
   }
+};
+
+const onKeydown = (event: KeyboardEvent) => {
+  const target = editableTarget(event);
+  if (!target) return;
+  if (target.getAttribute("contenteditable") === "true") leaveEditing(event, target);
+  else enterEditing(event, target);
 };
 
 const draw = async () => {

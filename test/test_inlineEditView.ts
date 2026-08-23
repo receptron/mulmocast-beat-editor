@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
 
-import { mountBeatView, clickPath, typeInto, blurActive } from "./support/beatViewHarness";
+import { mountBeatView, clickPath, typeInto, blurActive, pressOn, reachability } from "./support/beatViewHarness";
 
 /**
  * Click-to-edit, driven through a real mount.
@@ -94,4 +94,55 @@ test("a non-slide beat is not made editable even when asked", async () => {
   view.unmount();
   assert.equal(markers, 0);
   assert.equal(editableClass, false);
+});
+
+test("an editable marker is reachable without a mouse", async () => {
+  // Codex round 1: the feature was mouse-only — nothing tabbable, and a screen reader was never
+  // told the text could be edited. The attributes go on after each render because the elements
+  // come from `v-html`.
+  const on = await mountBeatView(slide(), { editable: true });
+  const attrs = reachability(on, "title");
+  on.unmount();
+  assert.equal(attrs.tabindex, "0");
+  assert.equal(attrs.role, "textbox");
+  assert.equal(attrs.label, "Edit title");
+});
+
+test("a read-only beat carries none of those attributes", async () => {
+  const off = await mountBeatView(slide(), { editable: false });
+  const attrs = reachability(off, "title");
+  off.unmount();
+  assert.deepEqual(attrs, { tabindex: null, role: null, label: null });
+});
+
+test("Enter on a focused marker starts editing, and Enter again commits", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  pressOn(view, "title", "Enter");
+  const started = view.host.querySelectorAll('[contenteditable="true"]').length;
+  typeInto(view, "title", "ByKeyboard");
+  pressOn(view, "title", "Enter");
+  blurActive(view);
+  const emitted = view.emitted.at(-1) as Record<string, Record<string, Record<string, unknown>>> | undefined;
+  view.unmount();
+  assert.equal(started, 1, "Enter should have started editing");
+  assert.equal(emitted?.image.slide.title, "ByKeyboard");
+});
+
+test("Space also starts editing", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  pressOn(view, "title", " ");
+  const started = view.host.querySelectorAll('[contenteditable="true"]').length;
+  view.unmount();
+  assert.equal(started, 1);
+});
+
+test("Escape discards what was typed", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  typeInto(view, "title", "Discarded");
+  pressOn(view, "title", "Escape");
+  blurActive(view);
+  const count = view.emitted.length;
+  view.unmount();
+  assert.equal(count, 0);
 });
