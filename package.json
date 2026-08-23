@@ -1,17 +1,17 @@
 {
-  "name": "@mulmocast/deck-web",
-  "version": "2.0.0",
+  "name": "@mulmocast/beat-editor",
+  "version": "1.0.0",
   "description": "Vue 3 components for editing MulmoScript beats live in the browser \u2014 every beat type renders as a div, and every editor is swappable",
   "type": "module",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com/receptron/mulmocast-deck-web.git"
+    "url": "git+ssh://git@github.com/receptron/mulmocast-beat-editor.git"
   },
   "bugs": {
-    "url": "https://github.com/receptron/mulmocast-deck-web/issues"
+    "url": "https://github.com/receptron/mulmocast-beat-editor/issues"
   },
-  "homepage": "https://github.com/receptron/mulmocast-deck-web#readme",
+  "homepage": "https://github.com/receptron/mulmocast-beat-editor#readme",
   "keywords": [
     "mulmocast",
     "mulmoscript",
