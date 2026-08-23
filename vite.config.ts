@@ -9,7 +9,11 @@ import dts from "vite-plugin-dts";
 const isLib = process.env.BUILD_TARGET === "lib";
 
 export default defineConfig({
-  plugins: [vue(), tailwindcss(), ...(isLib ? [dts({ bundleTypes: true, tsconfigPath: "./tsconfig.app.json", outDirs: "dist/lib" })] : [])],
+  plugins: [vue(), tailwindcss(), ...(isLib ? [// No `bundleTypes`: it needs @microsoft/api-extractor, which this package does not depend on,
+    // so the plugin logs "Failed to load '@microsoft/api-extractor'" and emits per-file
+    // declarations anyway. Every published version has shipped per-file types; the option only
+    // ever produced a scary line in the middle of `npm publish`.
+    dts({ tsconfigPath: "./tsconfig.app.json", outDirs: "dist/lib" })] : [])],
   build: isLib
     ? {
         outDir: "dist/lib",
