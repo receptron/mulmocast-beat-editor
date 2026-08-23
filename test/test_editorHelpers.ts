@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 
 import {
   moveInArray,
@@ -417,4 +419,37 @@ test("htmlToMarkup: a leading `>` does not re-open the quadratic path", () => {
 test("htmlToMarkup: an empty bracket pair is not a tag", () => {
   // `<[^>]+>` needed one or more characters between the brackets, so `<>` was never stripped.
   assert.equal(htmlToMarkup("a<>b"), "a<>b");
+});
+
+test("editorHelpers: a tag-opener class must exclude `<`", () => {
+  // The inverted rule, after three separate findings on htmlToMarkup's regexes. Enumerating which
+  // patterns are quadratic does not converge, so this states what is PERMITTED instead: the class
+  // that scans a tag opener — the span between `<name` and `>`, always written right after `\\b` —
+  // must exclude `<`. Those are the ones where a failed match rescans from every `<` in the input.
+  //
+  // Scoped to openers on purpose, and the scope is measured rather than assumed. The other two
+  // classes in this file are linear: `class="([^"]*)"` sits inside a quoted value (9.1ms over 1MB),
+  // and parsePath's `[^.[\\]]` is over a deck path, not HTML (3.1ms over 160k). Bounding the first
+  // to `[^<"]` is also NOT equivalent — it changes output on 4 of 8,400 generated inputs.
+  const source = readFileSync(fileURLToPath(new URL("../src/editorHelpers.ts", import.meta.url)), "utf8");
+  const code = source
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trimStart().startsWith("//"))
+    .join("\n");
+  const openers = [...code.matchAll(/\\b(\[\^[^\]]*\])/g)].map((m) => m[1]);
+  assert.ok(openers.length >= 4, `expected to find the tag-opener classes, found ${openers.length}`);
+  assert.deepEqual(
+    openers.filter((cls) => !cls.includes("<")),
+    [],
+    "a tag-opener character class that can scan past `<` is quadratic — see the comment above",
+  );
+});
+
+test("htmlToMarkup: a wall of malformed known openers does not stall", () => {
+  // Codex's round-2 counter-examples. With the unbounded classes these took 4.1s and 110s; the
+  // point of the test is that the suite would hang rather than that a timer fires.
+  assert.equal(htmlToMarkup("<strong".repeat(20000)), "<strong".repeat(20000));
+  const span = '<span class="text-d-primary"'.repeat(2000);
+  assert.equal(htmlToMarkup(span), span);
 });

@@ -304,17 +304,23 @@ export const htmlToMarkup = (html: string): string => {
   s = s.replace(/<br\s*\/?>/gi, "\n");
 
   // Inline tags: replace innermost first. Iterate until no rule matches.
+  // Every character class below excludes `<`, and that is the rule rather than a detail: a class
+  // that can cross a `<` rescans the rest of the string at each failed start, which is what made
+  // this quadratic. `'<span class="text-d-primary"'.repeat(2000)` took 110s with `[^>]`; with
+  // `[^<>]` it is 0.5ms. An attribute cannot legally contain a raw `<`, so nothing is lost —
+  // measured as 0 differences over 11,132 generated inputs against the pre-fix implementation.
+  // `test_editorHelpers.ts` fails if a `[^>]` class reappears in this file.
   for (let i = 0; i < 50; i++) {
     const before = s;
-    s = s.replace(/<(strong|b)\b[^>]*>([^<]*?)<\/\1>/gi, "**$2**");
-    s = s.replace(/<(em|i)\b[^>]*>([^<]*?)<\/\1>/gi, emReplace);
-    s = s.replace(/<span\b[^>]*class="([^"]*)"[^>]*>([^<]*?)<\/span>/gi, (_m, cls: string, text: string) => {
+    s = s.replace(/<(strong|b)\b[^<>]*>([^<]*?)<\/\1>/gi, "**$2**");
+    s = s.replace(/<(em|i)\b[^<>]*>([^<]*?)<\/\1>/gi, emReplace);
+    s = s.replace(/<span\b[^<>]*class="([^"]*)"[^<>]*>([^<]*?)<\/span>/gi, (_m, cls: string, text: string) => {
       const colorMatch = /\btext-d-([a-z]+)\b/.exec(cls);
       if (colorMatch && INLINE_COLOR_KEYS.has(colorMatch[1])) return `{${colorMatch[1]}:${text}}`;
       return text;
     });
     // bare span without class
-    s = s.replace(/<span\b[^>]*>([^<]*?)<\/span>/gi, "$1");
+    s = s.replace(/<span\b[^<>]*>([^<]*?)<\/span>/gi, "$1");
     if (s === before) break;
   }
 
