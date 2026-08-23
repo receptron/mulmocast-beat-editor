@@ -1,22 +1,39 @@
 <script setup lang="ts">
-import { withNestedField, readString, type EditableBeat } from "../beatHelpers";
+import { computed } from "vue";
+import type { SlideLayout } from "@mulmocast/deck";
+import { beatImage, withImageField, type EditableBeat } from "../beatHelpers";
+import { LAYOUT_TYPES, makeSlide, isSlideLayout } from "../editorHelpers";
+import Inspector from "../components/Inspector.vue";
 import { inputValue, FIELD_CLASS, LABEL_CLASS, LABEL_TEXT_CLASS } from "./field";
 
 const props = defineProps<{ beat: EditableBeat }>();
 const emit = defineEmits<{ update: [beat: EditableBeat] }>();
-const set = (field: string, value: unknown) => emit("update", withNestedField(props.beat, "slide", field, value));
+
+// A beat is edited as `Record<string, unknown>`, so `image.slide` is whatever the script or a
+// half-finished edit left there; one that is not a slide gets the starter below, not a blank pane.
+const slide = computed<SlideLayout | undefined>(() => {
+  const candidate = beatImage(props.beat).slide;
+  return isSlideLayout(candidate) ? candidate : undefined;
+});
+
+const replace = (next: SlideLayout) => emit("update", withImageField(props.beat, "slide", next));
+
+const start = (value: string) => {
+  const layout = LAYOUT_TYPES.find((candidate) => candidate === value);
+  if (layout) replace(makeSlide(layout));
+};
 </script>
 
 <template>
-  <label :class="LABEL_CLASS">
-    <span :class="LABEL_TEXT_CLASS">title</span>
-    <input :value="readString(beat, 'title', 'slide')" :class="FIELD_CLASS" @input="set('title', inputValue($event))" />
-  </label>
-  <label :class="LABEL_CLASS">
-    <span :class="LABEL_TEXT_CLASS">subtitle</span>
-    <input :value="readString(beat, 'subtitle', 'slide')" :class="FIELD_CLASS" @input="set('subtitle', inputValue($event))" />
-  </label>
-  <p class="rounded border border-stone-200 bg-stone-50 p-2 text-stone-500">
-    A slide beat carries a full @mulmocast/deck layout. Only its title and subtitle are edited here; the rest of the layout comes from the script.
-  </p>
+  <Inspector v-if="slide" :slide="slide" @update="replace" />
+  <div v-else class="flex flex-col gap-2 rounded border border-stone-200 bg-stone-50 p-2">
+    <p class="text-stone-500">This beat carries no @mulmocast/deck layout yet.</p>
+    <label :class="LABEL_CLASS">
+      <span :class="LABEL_TEXT_CLASS">start from a layout</span>
+      <select :value="''" :class="FIELD_CLASS" @change="start(inputValue($event))">
+        <option value="" disabled>choose…</option>
+        <option v-for="layout in LAYOUT_TYPES" :key="layout" :value="layout">{{ layout }}</option>
+      </select>
+    </label>
+  </div>
 </template>
