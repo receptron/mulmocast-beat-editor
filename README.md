@@ -8,14 +8,18 @@
 
 Vue 3 components for editing [`@mulmocast/deck`](https://www.npmjs.com/package/@mulmocast/deck) slide decks live in the browser.
 
-A 3-pane editor that holds a `SlideLayout[]` (or a full MulmoScript) in memory, renders each slide live via `generateSlideHTML()` into a sandboxed iframe, and lets you edit through **WYSIWYG click-to-edit + a floating toolbar + drag-and-drop reorder**, plus a schema-aware Inspector for structural edits. No backend, no persistence, no AI — just data ↔ preview.
+Two editors, both controlled components with no backend, no persistence and no AI — just data ↔ preview:
+
+- **Slide deck editor** — a 3-pane editor over a `SlideLayout[]` (or a full MulmoScript). Each slide renders live via `generateSlideHTML()` into a sandboxed iframe, and you edit through **WYSIWYG click-to-edit + a floating toolbar + drag-and-drop reorder**, plus a schema-aware Inspector for structural edits.
+- **Beat editor** — a list editor over a MulmoScript's `beats`, where every beat type renders as a div (not an iframe) and the pane on the right is **whichever editor is registered for that beat's `image.type`**. The registry is the extension point: replace an editor, or add a second one for a type.
 
 ## Highlights
 
 - **WYSIWYG click-to-edit** — click any text in the preview to edit in place. Blur or Enter commits, Escape cancels.
 - **Floating toolbar** — select text → toolbar appears with **B** (bold) / **★ amber highlight** / **7 color swatches** / **× clear**. Toggle off by clicking the same button again.
 - **Drag-and-drop reorder** — drag bullets, stats cards, timeline steps, manifesto lines, columns, grid items in the preview to reorder. Drag slides in the left list to reorder the deck.
-- **Inspector for structure** — add / remove / swap layout type / nest content blocks / edit non-text fields.
+- **Inspector for structure** — add / remove / swap layout type / nest content blocks / edit non-text fields. A `slide` beat gets the same Inspector in the beat editor.
+- **Swappable beat editors** — one registry keyed by `image.type`, several editors allowed per type, and your own can replace or join the shipped ones.
 
 ## Install
 
@@ -61,6 +65,73 @@ const script = ref({ /* your MulmoScript */ });
 
 Theme priority: prop `theme` > `script.presentationStyle.slideParams.theme` > `script.slideParams.theme` > built-in `defaultTheme`.
 
+### Edit a MulmoScript's beats
+
+`BeatListEditor` edits the beat array itself, so add / remove / reorder are array operations — the deck editor extracts slide beats and zips them back, which is why it cannot insert mid-deck. Every beat type `beatToHtml` renders previews in the list; the pane on the right edits the selected one.
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { BeatListEditor, makeBeat, type EditableBeat } from "@mulmocast/deck-web";
+
+const beats = ref<EditableBeat[]>([makeBeat("textSlide"), makeBeat("chart")]);
+</script>
+
+<template>
+  <BeatListEditor v-model:beats="beats" />
+</template>
+```
+
+A beat is edited as `Record<string, unknown>`, not as the cli's `MulmoBeat`: a half-typed url or a `chartData` mid-keystroke is routinely invalid, and `beatToHtml` returns `undefined` for anything it cannot render, so the preview degrades instead of breaking.
+
+### Register your own beat editor
+
+Which editor opens for a beat is decided by one list. Pass your own and you can replace what ships, or add a second way into a type that already has one — which is how `chart` gets both a form and a raw-JSON view.
+
+```vue
+<script setup lang="ts">
+import { ref } from "vue";
+import { BeatListEditor, defaultBeatEditors, makeBeat, type BeatEditorDefinition, type EditableBeat } from "@mulmocast/deck-web";
+import MyChartEditor from "./MyChartEditor.vue";
+
+const beats = ref<EditableBeat[]>([makeBeat("chart")]);
+
+const editors: BeatEditorDefinition[] = [
+  // Replace what ships for one type...
+  ...defaultBeatEditors.filter((editor) => editor.beatType !== "chart"),
+  // ...or drop the filter to leave the built-ins in place and add yours as a second tab.
+  { id: "chart.mine", label: "Mine", beatType: "chart", component: MyChartEditor },
+];
+</script>
+
+<template>
+  <BeatListEditor v-model:beats="beats" :editors="editors" />
+</template>
+```
+
+The component's contract is the whole extension point:
+
+```ts
+props: { beat: EditableBeat }
+emits: update(beat: EditableBeat)
+```
+
+It edits `beat.image` and nothing else — the fields every beat has (the spoken `text`) are drawn by the pane, so an editor stays about the one shape it knows. `editorsFor(beatType, editors)` returns every editor registered for a type in registration order, and the first one is what opens by default. A type with no editor registered is not an error: the pane says so and the beat still previews.
+
+The demo registers one (`textSlide.outline`) on top of the defaults, so the tab switcher is visible in `yarn dev` under **Beat editor**.
+
+#### What ships
+
+| `image.type` | Editors | Notes |
+|---|---|---|
+| `textSlide` | `Form` | title / subtitle / bullets |
+| `markdown` | `Markdown` | the string form; the named-slot layout form is read-only |
+| `chart` | `Form`, `JSON` | the form covers the shape a Chart.js config almost always has; JSON is there for the rest |
+| `mermaid` | `Diagram` | title + diagram source |
+| `image` / `movie` | `Form` | media source (`url` / `path` / `base64`) |
+| `slide` | `Form` | the full Inspector — every layout and content block |
+| `html_tailwind` | `HTML` | author markup, emitted as written |
+
 ### Use `<SlidePreview>` standalone
 
 If you already have your own deck-list / inspector and only want WYSIWYG editing in an iframe:
@@ -87,7 +158,11 @@ const slide = ref<SlideLayout>({ layout: "title", title: "Hello", subtitle: "Cli
 | `<DeckEditor>` | All-in-one 3-pane editor. `v-model:slides` (`SlideLayout[]`), optional `theme`, optional `v-model:selectedIndex`. |
 | `<MulmoScriptDeckEditor>` | Same UX but consumes/emits a MulmoScript. |
 | `<DeckList>` / `<SlidePreview>` / `<Inspector>` | The individual panes — drop into your own layout. |
+| `<BeatListEditor>` | List editor over a MulmoScript's beats. `v-model:beats`, optional `editors`. |
+| `<BeatView>` / `<BeatEditorPane>` | One beat's preview and one beat's editing pane — drop into your own layout. |
+| `defaultBeatEditors` / `editorsFor` | The shipped editor registry, and the lookup a host uses. |
 | `defaultTheme` / `sampleDeck` | Data helpers for quick starts. |
+| `makeBeat` / `BEAT_TYPES` / `beatType` / `beatImage` | Beat helpers, for building the array a host edits. |
 
 The Inspector covers every layout (`title` / `bigQuote` / `columns` / `comparison` / `grid` / `stats` / `timeline` / `split` / `matrix` / `table` / `funnel` / `waterfall` / `manifesto`) and every content block type (`text` / `bullets` / `callout` / `tag` / `code` / `metric` / `divider` / `image` / `imageRef` / `chart` / `mermaid` / `section` / `table`), with full CRUD + reorder on every array.
 
@@ -116,6 +191,12 @@ DeckEditor.vue           (controlled — props: slides, theme; emits: update:sli
 
 MulmoScriptDeckEditor.vue
 └── DeckEditor (with a beats↔slides adapter)
+
+BeatListEditor.vue       (controlled — props: beats, editors; emits: update:beats)
+├── BeatView.vue         -- one per beat: its own fragment and its own chart / mermaid runtime,
+│                           so editing one beat leaves the others alone
+└── BeatEditorPane.vue   -- right (the fields every beat has, plus the registered editor)
+    └── editors/registry.ts -- image.type -> component, replaceable by the host
 ```
 
 State is held by the parent (Vue v-model pattern). All mutations are immutable copies, so iframe re-renders reactively.
@@ -128,6 +209,9 @@ yarn build        # build the demo SPA → dist/
 yarn build:lib    # build the publishable library → dist/lib/ (used by prepublishOnly)
 yarn lint
 yarn format
+yarn typecheck    # vue-tsc over src and test
+yarn test         # node:test over the pure helpers
+yarn knip         # dead-code scan
 ```
 
 ## License

@@ -6,6 +6,8 @@ import BeatGallery from "./components/BeatGallery.vue";
 import BeatListEditor from "./BeatListEditor.vue";
 import { type EditableBeat, makeBeat } from "./beatHelpers";
 import { SAMPLES } from "./data/samples";
+import { defaultBeatEditors } from "./editors/registry";
+import OutlineTextSlideEditor from "./demo/OutlineTextSlideEditor.vue";
 import { clone } from "./editorHelpers";
 
 // Two views: the slide editor, and every beat type beatToHtml renders.
@@ -14,6 +16,10 @@ const view = ref<"editor" | "beats" | "beatEditor">("editor");
 // A starting script for the beat editor. Separate from the slide samples, which are
 // SlideLayout[]; this is a beat array, which is the thing being edited here.
 const beats = ref<EditableBeat[]>([makeBeat("textSlide"), makeBeat("markdown"), makeBeat("chart"), makeBeat("mermaid"), makeBeat("slide")]);
+
+// What a consumer does: keep the shipped editors and add one. `textSlide` already has `Form`,
+// so the pane grows a tab switcher — which is the registry being visible rather than described.
+const beatEditors = [...defaultBeatEditors, { id: "textSlide.outline", label: "Outline", beatType: "textSlide", component: OutlineTextSlideEditor }];
 
 const sampleKey = ref<string>(SAMPLES[0].key);
 const currentSample = computed(() => SAMPLES.find((s) => s.key === sampleKey.value) ?? SAMPLES[0]);
@@ -86,12 +92,14 @@ const resetSample = () => {
         </button>
       </template>
       <span v-else-if="view === 'beats'" class="text-stone-500">Every beat type <code>beatToHtml</code> renders, driven the way a host would</span>
-      <span v-else class="text-stone-500">Edit any beat — the preview updates as you type</span>
+      <span v-else class="text-stone-500"
+        >Edit any beat — the preview updates as you type. <code>textSlide</code> carries a demo-registered second editor.</span
+      >
     </header>
     <div class="flex-1 min-h-0">
       <DeckEditor v-if="view === 'editor'" v-model:slides="slides" :theme="theme" />
       <BeatGallery v-else-if="view === 'beats'" />
-      <BeatListEditor v-else v-model:beats="beats" />
+      <BeatListEditor v-else v-model:beats="beats" :editors="beatEditors" />
     </div>
   </div>
 </template>
