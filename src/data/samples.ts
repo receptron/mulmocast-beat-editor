@@ -1,61 +1,54 @@
-import type { SlideLayout, SlideTheme } from "@mulmocast/deck";
-import { sampleDeck, defaultTheme } from "./sampleDeck";
 import bootcampScript from "./bootcamp_v2_kickoff.json";
 import showcaseScript from "./slide_deck_showcase.json";
+import { sampleDeck } from "./sampleDeck";
+import { type EditableBeat, makeBeat } from "../beatHelpers";
 
 /**
- * Pull slides + theme out of a MulmoScript-shaped object.
- * Picks every beat whose image.type === "slide" and preserves their order.
+ * The demo's starting scripts. These JSON files are MulmoScripts, which is what the beat editor
+ * edits — so the beats come straight out, with none of the slide extraction the deck editor used
+ * to need.
  */
-const fromMulmoScript = (script: unknown): { slides: SlideLayout[]; theme?: SlideTheme } => {
-  if (!script || typeof script !== "object") return { slides: [] };
-  const s = script as {
-    beats?: Array<{ image?: { type?: string; slide?: SlideLayout } }>;
-    slideParams?: { theme?: SlideTheme };
-    presentationStyle?: { slideParams?: { theme?: SlideTheme } };
-  };
-  const slides = (s.beats ?? []).flatMap((b) => (b.image?.type === "slide" && b.image.slide ? [b.image.slide] : []));
-  const theme = s.presentationStyle?.slideParams?.theme ?? s.slideParams?.theme;
-  return { slides, theme };
-};
-
-export type SampleDeck = {
+export type SampleScript = {
   /** Stable key for the picker dropdown. */
   key: string;
   /** Display label. */
   label: string;
-  /** Short hint shown under the label. */
+  /** Short hint shown next to the picker. */
   description?: string;
-  slides: SlideLayout[];
-  theme?: SlideTheme;
+  beats: EditableBeat[];
 };
 
-const bootcamp = fromMulmoScript(bootcampScript);
-const showcase = fromMulmoScript(showcaseScript);
+const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 
-/** Registered samples in picker order. The first one is the initial deck. */
-export const SAMPLES: SampleDeck[] = [
+const beatsOf = (script: unknown): EditableBeat[] => {
+  const beats = isRecord(script) ? script["beats"] : undefined;
+  return Array.isArray(beats) ? beats.filter(isRecord) : [];
+};
+
+/** Registered samples in picker order. The first one is what the editor opens on. */
+export const SAMPLES: SampleScript[] = [
   {
-    key: "minimal",
-    label: "Minimal",
-    description: "4 slides showcasing title / stats / comparison / bigQuote.",
-    slides: sampleDeck,
-    theme: defaultTheme,
+    key: "mixed",
+    label: "One of each",
+    description: "Every beat type the registry has an editor for.",
+    beats: [makeBeat("textSlide"), makeBeat("markdown"), makeBeat("chart"), makeBeat("mermaid"), makeBeat("slide")],
   },
   {
     key: "showcase",
-    label: "Layout showcase (12 slides)",
-    // The one layout it omits is manifesto, which the BootCamp sample carries — so between
-    // the two the picker reaches all thirteen.
-    description: "One slide per layout: title / bigQuote / columns / comparison / grid / stats / timeline / split / matrix / table / funnel / waterfall.",
-    slides: showcase.slides,
-    theme: showcase.theme ?? defaultTheme,
+    label: "Layout showcase",
+    description: "One slide beat per @mulmocast/deck layout.",
+    beats: beatsOf(showcaseScript),
   },
   {
     key: "bootcamp",
-    label: "BootCamp v2 (19 slides)",
-    description: "Full Phase 1-6 showcase — glass cards, manifesto, hot timeline, icon bullets, *emphasis*, etc.",
-    slides: bootcamp.slides,
-    theme: bootcamp.theme ?? defaultTheme,
+    label: "BootCamp v2",
+    description: "A real deck — glass cards, manifesto, hot timeline, icon bullets, emphasis.",
+    beats: beatsOf(bootcampScript),
+  },
+  {
+    key: "starter",
+    label: "Starter deck",
+    description: "The four slides from `sampleDeck`, as slide beats.",
+    beats: sampleDeck.map((slide) => ({ text: "", image: { type: "slide", slide } })),
   },
 ];
