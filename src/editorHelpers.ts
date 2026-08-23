@@ -300,6 +300,11 @@ const stripTagsOnce = (input: string): string => {
  */
 export const htmlToMarkup = (html: string): string => {
   let s = html;
+  // A <br> alone inside a block is the browser's placeholder for an empty line, not a break in
+  // addition to one. Dropping it first stops it being counted twice: pasting "one\n\nthree"
+  // gives `<div>one</div><div><br></div><div>three</div>`, which rendered as three breaks.
+  s = s.replace(/<(div|p|li|h[1-6]|blockquote|section|article)\b[^<>]*>\s*<br\s*\/?>\s*<\/\1>/gi, "<$1></$1>");
+
   // <br> → newline (does not contain children, do first).
   s = s.replace(/<br\s*\/?>/gi, "\n");
 

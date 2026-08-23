@@ -270,6 +270,18 @@ test("htmlToMarkup: a closing block tag is a line boundary", () => {
   assert.equal(htmlToMarkup("<h1>Head</h1><p>Body</p>"), "Head\nBody");
 });
 
+test("htmlToMarkup: a <br> alone in a block is a placeholder, not an extra break", () => {
+  // Chromium writes an empty pasted line as `<div><br></div>`. Counting both the <br> and the
+  // block's own boundary gave one break too many — measured end to end, pasting "one\n\nthree"
+  // rendered as `one<br><br><br>three`.
+  assert.equal(htmlToMarkup("<div>one</div><div><br></div><div>three</div>"), "one\n\nthree");
+  assert.equal(htmlToMarkup("<p>one</p><p><br></p><p>three</p>"), "one\n\nthree");
+  assert.equal(htmlToMarkup("<div><br></div><div>three</div>"), "\nthree", "a leading blank line");
+  assert.equal(htmlToMarkup("<div>one</div><div><br></div>"), "one\n", "a trailing blank line");
+  // A <br> WITH content beside it is a real break and still counts.
+  assert.equal(htmlToMarkup("<div>a<br>b</div>"), "a\nb");
+});
+
 test("htmlToMarkup: a closing cell is a word boundary", () => {
   // A pasted table keeps real <td>s. Measured before this: a two-cell row arrived as "alphabeta".
   // Cells run before blocks — once </tr> is a newline the last </td> stops looking last and
@@ -453,35 +465,46 @@ test("htmlToMarkup: a wall of malformed known openers does not stall", () => {
   assert.equal(htmlToMarkup(span), span);
 });
 
-test("htmlToMarkup: no tag-shaped input is super-linear", () => {
-  // Five review rounds each found a new way to write a quadratic regex here, and each fix drew
-  // another bypass: an unbounded class, a positive wildcard, a bare `.`, a regex built by
-  // concatenation, and `\\s*` between the tag name and the class. A guard that reads the source is
-  // re-implementing a regex analyser, and it has no last case — so this measures the property and
-  // is blind to how a regex is written.
-  //
-  // Sized against a measurement, not a guess. Reverting each of the four tag-opener classes to the
-  // unbounded form one at a time costs 1462ms / 443ms / 1384ms / 421ms over this family, against a
-  // 2.2ms baseline — so the weakest regression is 190x the healthy run and the budget sits between
-  // them with room for a loaded runner. A failure also arrives in under a second rather than the
-  // 110s the worst shape used to take.
-  //
-  // Its honest limit: it catches quadratic behaviour only for the shapes below. A future regex
-  // triggered by something not in this list is not covered.
-  const shapes = [
-    "<strong".repeat(10000),
-    "<em".repeat(10000),
-    '<span class="text-d-primary"'.repeat(3200),
-    "<span".repeat(10000),
-    "<".repeat(20000),
-    ">".repeat(10000) + "<".repeat(10000),
-    "<a".repeat(10000),
-    "<b ".repeat(10000),
-  ];
+// Five review rounds each found a new way to write a quadratic regex here, and each fix drew
+// another bypass: an unbounded class, a positive wildcard, a bare `.`, a regex built by
+// concatenation, and `\s*` between the tag name and the class. A guard that reads the source is
+// re-implementing a regex analyser, and it has no last case — so this measures the property and
+// is blind to how a regex is written.
+//
+// Sized against a measurement, not a guess. Reverting each of the four tag-opener classes to the
+// unbounded form one at a time costs 1462ms / 443ms / 1384ms / 421ms over this family, against a
+// 2.2ms baseline — so the weakest regression is 190x the healthy run and the budget sits between
+// them with room for a loaded runner. A failure also arrives in under a second rather than the
+// 110s the worst shape used to take.
+//
+// Its honest limit: it catches quadratic behaviour only for the shapes below. A future regex
+// triggered by something not in this list is not covered.
+const TAG_SHAPED_INPUTS = [
+  "<strong".repeat(10000),
+  "<em".repeat(10000),
+  '<span class="text-d-primary"'.repeat(3200),
+  "<span".repeat(10000),
+  "<".repeat(20000),
+  ">".repeat(10000) + "<".repeat(10000),
+  "<a".repeat(10000),
+  "<b ".repeat(10000),
+  // The block, cell and empty-placeholder rules added with inline editing. Recognized CLOSING
+  // tags are a family the openers above never reach, and the placeholder rule is the first here
+  // to span two tags with a backreference.
+  "</div>".repeat(10000),
+  "</li".repeat(10000),
+  "</td>".repeat(10000),
+  "<div><br></div>".repeat(4000),
+  "<div><br".repeat(10000),
+];
 
+test("htmlToMarkup: no tag-shaped input is super-linear", () => {
   const started = performance.now();
-  shapes.forEach((shape) => htmlToMarkup(shape));
+  TAG_SHAPED_INPUTS.forEach((shape) => htmlToMarkup(shape));
   const elapsed = performance.now() - started;
 
-  assert.ok(elapsed < 200, `htmlToMarkup took ${Math.round(elapsed)}ms over ${shapes.length} tag-shaped inputs (healthy is ~2ms); a quadratic scan is back`);
+  assert.ok(
+    elapsed < 200,
+    `htmlToMarkup took ${Math.round(elapsed)}ms over ${TAG_SHAPED_INPUTS.length} tag-shaped inputs (healthy is ~2ms); a quadratic scan is back`,
+  );
 });
