@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { beatImage, withNestedField, isRecord, readString, type EditableBeat } from "../beatHelpers";
+import { withNestedField, readString, readStringList, type EditableBeat } from "../beatHelpers";
 import { inputValue, FIELD_CLASS, LABEL_CLASS, LABEL_TEXT_CLASS } from "../editors/field";
 
 /**
@@ -15,11 +15,7 @@ import { inputValue, FIELD_CLASS, LABEL_CLASS, LABEL_TEXT_CLASS } from "../edito
 const props = defineProps<{ beat: EditableBeat }>();
 const emit = defineEmits<{ update: [beat: EditableBeat] }>();
 
-const bullets = computed<string[]>(() => {
-  const slide = beatImage(props.beat).slide;
-  const items = isRecord(slide) ? slide.bullets : undefined;
-  return Array.isArray(items) ? items.filter((bullet): bullet is string => typeof bullet === "string") : [];
-});
+const bullets = computed(() => readStringList(props.beat, "bullets", "slide"));
 
 const outline = computed(() => [readString(props.beat, "title", "slide"), ...bullets.value].join("\n"));
 

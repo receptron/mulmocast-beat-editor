@@ -143,3 +143,15 @@ export const draftOwnsBeat = (draft: string, beat: EditableBeat): boolean => {
     return false;
   }
 };
+
+/**
+ * A list of strings out of a nested field of `beat.image`, e.g. a textSlide's bullets.
+ *
+ * Two editors were reading the same list with the same filter. The filter belongs next to the
+ * other readers, not copied into each of them.
+ */
+export const readStringList = (beat: EditableBeat, field: string, parent: string): string[] => {
+  const holder = beatImage(beat)[parent];
+  const items = isRecord(holder) ? holder[field] : undefined;
+  return Array.isArray(items) ? items.filter((item): item is string => typeof item === "string") : [];
+};
