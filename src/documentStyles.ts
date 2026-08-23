@@ -26,11 +26,22 @@ const BEAT_TYPOGRAPHY = `
 .beat-fragment code { background: #f5f5f4; padding: 0.1rem 0.3rem; border-radius: 0.2rem; }
 `;
 
+/**
+ * Affordances for editing a slide beat in place. These have to live here rather than in
+ * `BeatView.vue`: the elements they target come from `v-html`, so a scoped component style
+ * would not reach them, and the repo's rule is that anything which cannot be a Tailwind utility
+ * goes in one global sheet with a reason.
+ */
+const INLINE_EDIT = `
+.beat-fragment--editable [data-mulmo-path]:hover { outline: 2px solid rgba(56,189,248,.55); outline-offset: 2px; cursor: text; }
+.beat-fragment [data-mulmo-path][contenteditable="true"] { outline: 2px solid rgba(56,189,248,.9); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(56,189,248,.15); }
+`;
+
 /** Append the document-level styles once. Safe to call from every beat. */
 export const ensureDocumentStyles = (): void => {
   if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = slideUtilityCss + BEAT_TYPOGRAPHY;
+  style.textContent = slideUtilityCss + BEAT_TYPOGRAPHY + INLINE_EDIT;
   document.head.appendChild(style);
 };

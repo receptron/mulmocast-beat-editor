@@ -11,11 +11,12 @@ import type { Component } from "vue";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT_DIR = "node_modules/.tmp/editor-harness";
 
-export type EditorName = "Inspector" | "ContentBlockEditor";
+export type EditorName = "Inspector" | "ContentBlockEditor" | "BeatView";
 type Editors = Record<EditorName, Component>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
-const isEditors = (value: unknown): value is Editors => isRecord(value) && isRecord(value["Inspector"]) && isRecord(value["ContentBlockEditor"]);
+const isEditors = (value: unknown): value is Editors =>
+  isRecord(value) && isRecord(value["Inspector"]) && isRecord(value["ContentBlockEditor"]) && isRecord(value["BeatView"]);
 
 /**
  * The editors are SFCs, so they have to be compiled before they can be mounted. `ssrLoadModule`
@@ -41,6 +42,9 @@ const editors: Promise<Editors> = (async () => {
   if (!isEditors(loaded)) throw new Error(`the harness bundle at ${OUT_DIR} exported no editors`);
   return loaded;
 })();
+
+export const compiled = editors;
+export { dom };
 
 export type Mounted = { selects: HTMLSelectElement[]; emitted: unknown[]; unmount: () => void };
 

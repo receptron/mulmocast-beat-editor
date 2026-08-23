@@ -5,6 +5,7 @@ import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
+import { applyInlineEdit, isInlineEditable } from "../inlineEdit";
 
 /**
  * One beat, rendered as a div.
@@ -21,7 +22,11 @@ const props = defineProps<{
   beat: EditableBeat;
   /** Must be unique per beat on the page and match [A-Za-z_][A-Za-z0-9_-]* — see beatToHtml. */
   idPrefix: string;
+  /** Click any marked text to edit it in place. Only a `slide` beat carries the markers. */
+  editable?: boolean;
 }>();
+
+const emit = defineEmits<{ update: [beat: EditableBeat] }>();
 
 const fragment = computed<BeatHtmlFragment | undefined>(() => {
   try {
@@ -37,6 +42,53 @@ const fragment = computed<BeatHtmlFragment | undefined>(() => {
 const html = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
 
 const host = ref<HTMLElement | null>(null);
+
+const editing = computed(() => props.editable && isInlineEditable(props.beat));
+
+/** The `[data-mulmo-path]` element a pointer or key event happened inside, if any. */
+const editableTarget = (event: Event): HTMLElement | null => {
+  const from = event.target;
+  return from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
+};
+
+const beginEdit = (event: MouseEvent) => {
+  if (!editing.value) return;
+  const target = editableTarget(event);
+  if (!target || target.getAttribute("contenteditable") === "true") return;
+  target.setAttribute("contenteditable", "true");
+  // The click already places the caret; focusing again would move it to the start. Only step in
+  // when the click did not take focus at all.
+  if (document.activeElement !== target) target.focus();
+};
+
+/**
+ * Commit on the way out. Blur fires for a click elsewhere, Enter, or Escape-then-blur, so this
+ * is the single place an edit lands — and `applyInlineEdit` answers null when nothing changed,
+ * which is what stops an ordinary click-away from rebuilding the fragment.
+ */
+const commit = (event: FocusEvent) => {
+  const target = event.target;
+  if (!(target instanceof HTMLElement) || target.getAttribute("contenteditable") !== "true") return;
+  const path = target.getAttribute("data-mulmo-path") ?? "";
+  const html = target.innerHTML;
+  target.removeAttribute("contenteditable");
+  const next = applyInlineEdit(props.beat, path, html);
+  if (next) emit("update", next);
+};
+
+const onKeydown = (event: KeyboardEvent) => {
+  const target = editableTarget(event);
+  if (!target || target.getAttribute("contenteditable") !== "true") return;
+  if (event.key === "Enter" && !event.shiftKey) {
+    event.preventDefault();
+    target.blur();
+  } else if (event.key === "Escape") {
+    event.preventDefault();
+    // Drop the attribute first so the blur handler has nothing to commit — Escape discards.
+    target.removeAttribute("contenteditable");
+    target.blur();
+  }
+};
 
 const draw = async () => {
   const element = host.value;
@@ -63,8 +115,17 @@ onBeforeUnmount(() => releaseRuntimes(host.value));
       and javascript: urls written into a beat survive into its output, so this is the one
       place that has to strip them.
     -->
-    <!-- eslint-disable-next-line vue/no-v-html -- sanitized by sanitizeFragment -->
-    <div v-if="fragment" ref="host" class="beat-fragment" v-html="html"></div>
+    <!-- eslint-disable vue/no-v-html -- sanitized by sanitizeFragment above -->
+    <div
+      v-if="fragment"
+      ref="host"
+      :class="['beat-fragment', editing ? 'beat-fragment--editable' : '']"
+      @click="beginEdit"
+      @focusout="commit"
+      @keydown="onKeydown"
+      v-html="html"
+    ></div>
+    <!-- eslint-enable vue/no-v-html -->
     <p v-else class="rounded border border-dashed border-stone-300 p-3 text-xs text-stone-400">nothing to preview yet</p>
   </div>
 </template>
