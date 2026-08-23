@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from "vue";
-import { beatImage, withImageField, type EditableBeat } from "../beatHelpers";
+import { beatImage, withImageField, readString, type EditableBeat } from "../beatHelpers";
 import { CHART_TYPES, parseNumbers, readChartForm, writeChartForm, type ChartForm } from "./chartData";
 import { inputValue, FIELD_CLASS, LABEL_CLASS, LABEL_TEXT_CLASS } from "./field";
 
@@ -10,6 +10,9 @@ import { inputValue, FIELD_CLASS, LABEL_CLASS, LABEL_TEXT_CLASS } from "./field"
  * Everything else — `options`, plugin config, per-dataset colours — is carried through
  * untouched by `writeChartForm`, so this and the JSON editor can be used on the same beat in
  * either order. Growing the form to cover `options` is what the JSON editor is instead of.
+ *
+ * `title` is the exception: it is a required field of the chart beat and a sibling of
+ * `chartData`, so the JSON editor — which is about chartData — never reaches it.
  */
 const props = defineProps<{ beat: EditableBeat }>();
 const emit = defineEmits<{ update: [beat: EditableBeat] }>();
@@ -17,6 +20,7 @@ const emit = defineEmits<{ update: [beat: EditableBeat] }>();
 const form = computed<ChartForm>(() => readChartForm(beatImage(props.beat).chartData));
 const apply = (next: ChartForm) => emit("update", withImageField(props.beat, "chartData", writeChartForm(beatImage(props.beat).chartData, next)));
 
+const setTitle = (title: string) => emit("update", withImageField(props.beat, "title", title));
 const setType = (type: string) => apply({ ...form.value, type });
 const setLabels = (text: string) => apply({ ...form.value, labels: text.split("\n").filter((line) => line.trim() !== "") });
 const setSeriesLabel = (index: number, label: string) =>
@@ -28,6 +32,11 @@ const removeSeries = (index: number) => apply({ ...form.value, datasets: form.va
 </script>
 
 <template>
+  <label :class="LABEL_CLASS">
+    <span :class="LABEL_TEXT_CLASS">title</span>
+    <input :value="readString(beat, 'title')" :class="FIELD_CLASS" @input="setTitle(inputValue($event))" />
+  </label>
+
   <label :class="LABEL_CLASS">
     <span :class="LABEL_TEXT_CLASS">chart type</span>
     <select :value="form.type" :class="FIELD_CLASS" @change="setType(inputValue($event))">
