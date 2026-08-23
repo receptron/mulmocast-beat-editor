@@ -44,7 +44,7 @@
     "build:lib": "BUILD_TARGET=lib vue-tsc -b && BUILD_TARGET=lib vite build && yarn run build:css",
     "preview": "vite preview",
     "typecheck": "vue-tsc -b",
-    "lint": "eslint src test --max-warnings 85",
+    "lint": "eslint src test --max-warnings 64",
     "test": "tsx --test ./test/**/test_*.ts",
     "knip": "knip",
     "format": "prettier --write '{src,test}/**/*.{ts,vue,css}'",
