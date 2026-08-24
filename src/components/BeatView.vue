@@ -288,7 +288,14 @@ const commit = (event: FocusEvent) => {
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   carried_path.value = next ? pending_path.value : null;
   pending_path.value = null;
-  if (next) emit("update", next);
+  if (!next) return;
+  emit("update", next);
+  // The rebuild this is waiting for happens inside Vue's flush, which is already queued by the
+  // time this runs. A host that ignores the update produces no rebuild at all — measured, the
+  // intent then sat there and a later unrelated one opened the field.
+  queueMicrotask(() => {
+    carried_path.value = null;
+  });
 };
 
 /** Enter or Space on a focused-but-not-yet-editing element is the keyboard equivalent of a click. */

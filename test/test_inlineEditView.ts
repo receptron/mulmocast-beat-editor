@@ -490,17 +490,14 @@ test("a click on another marker survives the rebuild its own commit causes", asy
   // delegated handler never sees it. Measured on main: the field did not open and a second
   // click was needed. `mousedown` runs before all of that.
   const { mountBeatViewReactive } = await import("./support/beatViewHarness");
-  const view = await mountBeatViewReactive(slide());
+  // `hostApplies` because the timing is the point: a real host replaces the beat inside the
+  // emit, so Vue's flush is queued there. Driving the replacement from the test instead put it
+  // a tick late and the intent had already been dropped.
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
   clickPath(view, "title");
   setEditedHtml(view, "title", "FIRST");
   pressDownOn(view, "subtitle");
   focusOutTo(view, "subtitle");
-  await settle();
-
-  // The host does what a host does: the emit replaces the beat, which rebuilds the fragment.
-  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
-  if (!emitted) throw new Error("the first edit should have committed");
-  view.replaceBeat(emitted);
   await settle();
   await settle();
 
@@ -585,30 +582,29 @@ test("Enter leaves the caret at the END of the field", async () => {
 test("a right-click records no intent", async () => {
   // Codex round 1. A right-button press on another marker still moves focus, so the edit
   // commits and the fragment rebuilds — and the field the context menu was aimed at would
-  // open behind it.
+  // open behind it. `hostApplies` because that rebuild is same-tick, which is the only window
+  // an intent now survives.
   const { mountBeatViewReactive } = await import("./support/beatViewHarness");
-  const view = await mountBeatViewReactive(slide());
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
   clickPath(view, "title");
   setEditedHtml(view, "title", "FIRST");
   rightPressOn(view, "subtitle");
   focusOutTo(view, "subtitle");
   await settle();
-  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
-  if (emitted) view.replaceBeat(emitted);
-  await settle();
   await settle();
   const opened = view.host.querySelectorAll("[contenteditable]").length;
+  const committed = view.emitted.length;
   view.unmount();
-  assert.equal(emitted !== undefined, true, "the edit still commits");
+  assert.equal(committed, 1, "the edit still commits");
   assert.equal(opened, 0, "but nothing opens");
 });
 
 test("Escape abandons a press on another marker too", async () => {
-  // Otherwise the press sits there and the next commit anywhere carries it. The later edit is
-  // started with the KEYBOARD on purpose: a click would clear the intent by itself, so a test
-  // that clicks cannot tell whether Escape did anything.
+  // Otherwise the press sits there and the next commit carries it. The later edit is started
+  // with the KEYBOARD on purpose: a click clears the intent by itself, so a test that clicks
+  // cannot tell whether Escape did anything.
   const { mountBeatViewReactive } = await import("./support/beatViewHarness");
-  const view = await mountBeatViewReactive(slide());
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
   clickPath(view, "title");
   pressDownOn(view, "subtitle");
   pressOn(view, "title", "Escape");
@@ -618,12 +614,28 @@ test("Escape abandons a press on another marker too", async () => {
   setEditedHtml(view, "title", "LATER");
   blurToNowhere(view);
   await settle();
-  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
-  if (!emitted) throw new Error("the later edit should have committed");
-  view.replaceBeat(emitted);
-  await settle();
   await settle();
   const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
   view.unmount();
   assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});
+
+test("an update the host ignores leaves no intent to spend later", async () => {
+  // A host is free to drop an update. Then there is no rebuild for the intent to ride, and
+  // measured, it waited: a later unrelated re-render opened the field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 1, "the edit was offered");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Unrelated", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "nothing opens on a re-render the press had nothing to do with");
 });

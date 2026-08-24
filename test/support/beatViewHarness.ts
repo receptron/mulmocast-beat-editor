@@ -164,12 +164,23 @@ export const toolbarOf = (view: MountedBeat): Element | null => view.host.parent
 
 export type ReactiveBeat = MountedBeat & { replaceBeat: (next: EditableBeat) => void };
 
+const isBeat = (value: unknown): value is EditableBeat => typeof value === "object" && value !== null && !Array.isArray(value);
+
 /** Mount a BeatView whose `beat` prop can be changed afterwards, the way a host would. */
-export const mountBeatViewReactive = async (beat: EditableBeat): Promise<ReactiveBeat> => {
+/**
+ * `hostApplies` makes the update land synchronously, the way `BeatListEditor` does it — the
+ * emit handler replaces the beat there and then, so Vue's flush is queued inside the emit.
+ * Tests that want to control the replacement themselves leave it off and call `replaceBeat`.
+ */
+export const mountBeatViewReactive = async (beat: EditableBeat, options: { hostApplies?: boolean } = {}): Promise<ReactiveBeat> => {
   const { ref } = await import("vue");
   const emitted: unknown[] = [];
   const current = ref<EditableBeat>(beat);
-  const props = () => ({ beat: current.value, idPrefix: "probe", editable: true, onUpdate: (next: unknown) => emitted.push(next) });
+  const receive = (next: unknown) => {
+    emitted.push(next);
+    if (options.hostApplies && isBeat(next)) current.value = next;
+  };
+  const props = () => ({ beat: current.value, idPrefix: "probe", editable: true, onUpdate: receive });
   const { mountPoint, unmount } = await mount("BeatView", props);
   const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
   if (!host) throw new Error("BeatView rendered no fragment");
