@@ -713,3 +713,22 @@ test("a refused commit drops the press it was carrying", async () => {
   view.unmount();
   assert.deepEqual(opened, [], "the refused session's press opens nothing");
 });
+
+test("a press with nothing being edited is not an intent at all", async () => {
+  // Codex round 4. The intent exists to survive the rebuild a commit causes. With no edit in
+  // progress there is no commit and no rebuild — and recording anyway left the press for a
+  // later keyboard-started commit to spend, opening the wrong field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  pressDownOn(view, "title");
+
+  // No click followed. Now edit a DIFFERENT marker entirely, from the keyboard.
+  pressOn(view, "subtitle", "Enter");
+  setEditedHtml(view, "subtitle", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});

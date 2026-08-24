@@ -213,7 +213,11 @@ const carried = shallowRef<{ path: string; beat: EditableBeat } | null>(null);
 const PRIMARY_BUTTON = 0;
 
 const noteIntent = (event: MouseEvent) => {
-  if (!editing.value || event.button !== PRIMARY_BUTTON) return;
+  // Only while something IS being edited. The intent exists because this press will commit that
+  // edit and rebuild the fragment out from under its own click; with nothing being edited there
+  // is no commit, no rebuild, and the click lands by itself. Recorded regardless, a press that
+  // never became a click sat there and the next keyboard-started commit spent it.
+  if (!editing_element.value || event.button !== PRIMARY_BUTTON) return;
   pending_path.value = editableTarget(event)?.getAttribute("data-mulmo-path") ?? null;
 };
 
