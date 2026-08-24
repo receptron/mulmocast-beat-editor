@@ -485,7 +485,9 @@ const draw = async () => {
 // and since a fragment that never changes never fires the watcher again, nothing would ever
 // be drawn. flush "post" so the DOM already carries the new markup when the runtimes look.
 onMounted(() => {
-  ensureDocumentStyles();
+  // The root this beat actually lives in: a ShadowRoot when a host mounts the editor inside
+  // one, the document otherwise. A sheet on `document.head` does not cross into a shadow root.
+  ensureDocumentStyles(host.value?.getRootNode());
   void draw().catch(() => {});
 });
 watch(
