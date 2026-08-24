@@ -2,9 +2,9 @@
 import { ACCENT_COLORS } from "../editorHelpers";
 import type { AccentColor } from "../inlineFormat";
 
-import { ref } from "vue";
+import { onMounted, ref, watch } from "vue";
 
-defineProps<{ x: number; y: number }>();
+const props = defineProps<{ x: number; y: number }>();
 
 const emit = defineEmits<{
   bold: [];
@@ -24,6 +24,28 @@ const emit = defineEmits<{
  */
 const focused = ref(0);
 const shell = ref<HTMLElement | null>(null);
+
+/**
+ * Where `position: fixed` actually measures from.
+ *
+ * A `transform`, `filter` or `will-change` on ANY ancestor makes that ancestor the containing
+ * block, so `left`/`top` stop being viewport coordinates — measured in a host card wrapped in
+ * `translateZ(0)`, the toolbar landed 96px right and 60px BELOW a selection it should sit above.
+ * Asking the element where (0,0) puts it is exact and costs one reflow per move.
+ */
+const origin = ref({ x: 0, y: 0 });
+
+const measureOrigin = () => {
+  const element = shell.value;
+  if (!element) return;
+  element.style.left = "0px";
+  element.style.top = "0px";
+  const box = element.getBoundingClientRect();
+  origin.value = { x: box.left, y: box.top };
+};
+
+onMounted(measureOrigin);
+watch(() => [props.x, props.y], measureOrigin);
 
 /** Asked of the DOM rather than collected per button: one ref, no index bookkeeping to get wrong. */
 const buttonsIn = (): HTMLElement[] => [...(shell.value?.querySelectorAll<HTMLElement>("button") ?? [])];
@@ -73,7 +95,7 @@ const SWATCH: Record<AccentColor, string> = {
   <div
     ref="shell"
     class="fixed z-50 flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-1.5 py-1 text-xs shadow-lg"
-    :style="{ left: `${x}px`, top: `${y}px` }"
+    :style="{ left: `${x - origin.x}px`, top: `${y - origin.y}px` }"
     role="toolbar"
     aria-label="Format selection"
     @mousedown.prevent
