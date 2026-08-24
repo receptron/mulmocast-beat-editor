@@ -14,6 +14,8 @@ import {
   selectWithin,
   settle,
   toolbarOf,
+  toolbarButtons,
+  tabTo,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -326,4 +328,36 @@ test("a beat replaced mid-edit takes the toolbar and the listener with it", asyn
   view.unmount();
   assert.equal(stillShowing, 0, "the toolbar goes with the fragment");
   assert.equal(listeners, 0, "and so does the listener");
+});
+
+test("the toolbar is one tab stop, not ten", async () => {
+  // `role="toolbar"` promises arrows between the buttons and Tab past them. Ten stops would
+  // make skipping the toolbar cost ten presses.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  const buttons = toolbarButtons(view);
+  const stops = buttons.filter((button) => button.getAttribute("tabindex") === "0");
+  view.unmount();
+  assert.equal(buttons.length, 10, "bold, emphasis, seven colours, clear");
+  assert.equal(stops.length, 1, "exactly one of them is in the tab order");
+});
+
+test("tabbing into the toolbar does not end the edit", async () => {
+  // Focus leaving the editable element used to commit, which unmounted the toolbar before a
+  // keyboard user could press anything — the buttons are focusable and it says role="toolbar".
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  tabTo(view, toolbarButtons(view)[0]);
+  await settle();
+  const stillEditing = view.host.querySelector('[contenteditable="true"]') !== null;
+  const stillShowing = toolbarOf(view) !== null;
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(stillEditing, true, "the element is still being edited");
+  assert.equal(stillShowing, true, "and the toolbar is still there to press");
+  assert.equal(emitted, 0, "nothing was committed");
 });

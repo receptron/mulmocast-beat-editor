@@ -178,3 +178,28 @@ export const mountBeatViewReactive = async (beat: EditableBeat): Promise<Reactiv
   };
   return { host, emitted, unmount, replaceBeat };
 };
+
+/** The toolbar's buttons, in order. */
+export const toolbarButtons = (view: MountedBeat): HTMLElement[] => [
+  ...(view.host.parentElement?.querySelectorAll<HTMLElement>('[role="toolbar"] button') ?? []),
+];
+
+/**
+ * Move focus from the edited element to `next`, the way Tab does.
+ *
+ * jsdom COLLAPSES the selection when focus moves to a button; Chromium keeps it, which is the
+ * only reason a floating toolbar is usable at all — measured, the whole keyboard flow works in
+ * a browser. The range is put back here so the mounted tests exercise the browser's behaviour
+ * rather than jsdom's.
+ */
+export const tabTo = (view: MountedBeat, next: HTMLElement): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  const selection = dom.window.getSelection();
+  const held = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+  next.focus();
+  if (held && selection) {
+    selection.removeAllRanges();
+    selection.addRange(held);
+  }
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: next }));
+};

@@ -54,6 +54,12 @@ const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
 
+/** The whole beat, fragment and toolbar. Focus moving inside it is not the end of an edit. */
+const shell = ref<HTMLElement | null>(null);
+
+/** The element being edited, remembered because a commit can be triggered from the toolbar. */
+const editing_element = ref<HTMLElement | null>(null);
+
 /**
  * The editable element a pointer or key event happened inside, if any.
  *
@@ -105,19 +111,32 @@ const stopWatchingSelection = () => {
   toolbar.value = null;
 };
 
-const applyFormat = (format: InlineFormat) => {
-  if (toggleFormat(document.getSelection(), format)) repositionToolbar();
+/**
+ * Run a toolbar action and leave focus where the user had it.
+ *
+ * Re-selecting inside a `contenteditable` moves focus back to the text — measured, a keyboard
+ * user pressing Bold landed back in the heading and had to Tab to the toolbar again for every
+ * single press. A mouse user never notices, because `mousedown.prevent` kept focus in the text
+ * all along.
+ */
+const keepingToolbarFocus = (act: () => boolean) => {
+  const held = document.activeElement;
+  const fromToolbar = held instanceof HTMLElement && held.closest('[role="toolbar"]') !== null;
+  if (!act()) return;
+  repositionToolbar();
+  if (fromToolbar && held instanceof HTMLElement) held.focus();
 };
+
+const applyFormat = (format: InlineFormat) => keepingToolbarFocus(() => toggleFormat(document.getSelection(), format));
 
 const applyColor = (color: AccentColor) => applyFormat(colorFormat(color));
 
-const applyClear = () => {
-  if (clearFormat(document.getSelection())) repositionToolbar();
-};
+const applyClear = () => keepingToolbarFocus(() => clearFormat(document.getSelection()));
 
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
+  editing_element.value = target;
   target.setAttribute("contenteditable", "true");
   startWatchingSelection();
   if (focusIt || document.activeElement !== target) target.focus();
@@ -136,11 +155,16 @@ const beginEdit = (event: MouseEvent) => {
  * which is what stops an ordinary click-away from rebuilding the fragment.
  */
 const commit = (event: FocusEvent) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement) || target.getAttribute("contenteditable") !== "true") return;
+  const target = editing_element.value;
+  if (!target || target.getAttribute("contenteditable") !== "true") return;
+  // Focus moving WITHIN the beat is not the end of an edit. Tabbing into the toolbar would
+  // otherwise commit and unmount it before a keyboard user could press anything — the buttons
+  // are focusable and the element says `role="toolbar"`, so that was a promise it did not keep.
+  if (event.relatedTarget instanceof Node && shell.value?.contains(event.relatedTarget)) return;
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
   target.removeAttribute("contenteditable");
+  editing_element.value = null;
   stopWatchingSelection();
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);
@@ -162,6 +186,7 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
     target.removeAttribute("contenteditable");
+    editing_element.value = null;
     stopWatchingSelection();
     target.blur();
   }
@@ -211,7 +236,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div>
+  <div ref="shell" @focusout="commit">
     <component :is="'style'" v-if="fragment?.css">{{ fragment.css }}</component>
     <!--
       The fragment is sanitized above. `beatToHtml` documents that raw HTML, event handlers
@@ -224,7 +249,6 @@ onBeforeUnmount(() => {
       ref="host"
       :class="['beat-fragment', editing ? 'beat-fragment--editable' : '']"
       @click="beginEdit"
-      @focusout="commit"
       @keydown="onKeydown"
       v-html="html"
     ></div>

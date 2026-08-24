@@ -2,7 +2,17 @@ import test from "node:test";
 import assert from "node:assert";
 import { JSDOM } from "jsdom";
 
-import { BOLD, EMPHASIS, colorFormat, toggleFormat, clearFormat, tidyEditable, editableRootOf, formattableSelection } from "../src/inlineFormat";
+import {
+  BOLD,
+  EMPHASIS,
+  colorFormat,
+  toggleFormat,
+  clearFormat,
+  tidyEditable,
+  editableRootOf,
+  formattableSelection,
+  selectCharacters,
+} from "../src/inlineFormat";
 import { htmlToMarkup } from "../src/editorHelpers";
 
 /** Select `text` inside `root`, the way a user's drag would leave the selection. */
@@ -315,4 +325,41 @@ test("a range spanning two runs of the SAME format is stripped across both", () 
     assert.equal(it.text(), "abcdef", `case ${index}: no text moves`);
     assert.equal(it.selection.toString(), "bcde", `case ${index}: and the selection survives`);
   });
+});
+
+/** Every start/end pair over one shape, so an off-by-one at a node edge cannot hide. */
+const rangeRoundTripsOver = (html: string): number => {
+  const it = selectRange(html, 0, 1);
+  const text = it.text();
+  let checked = 0;
+  for (let from = 0; from < text.length; from++) {
+    for (let to = from + 1; to <= text.length; to++) {
+      selectCharacters(it.selection, it.root, from, to);
+      assert.equal(it.selection.toString(), text.slice(from, to), `${html} at ${from}..${to}`);
+      checked++;
+    }
+  }
+  return checked;
+};
+
+test("every character range round-trips through selectCharacters", () => {
+  // Restoring the selection after removal rests entirely on this, and the failure would be an
+  // off-by-one at a node edge — so the shapes are the ones that HAVE edges.
+  const shapes = ["<strong>abc</strong>def", "a<br>b", "<strong>a</strong><br><em>b</em>", "<!--c-->abc", "<strong>ab</strong><strong>cd</strong>"];
+  const checked = shapes.reduce((total, html) => total + rangeRoundTripsOver(html), 0);
+  // Said out loud so a shape that stops producing pairs cannot quietly shrink the sweep.
+  // 43 = n(n+1)/2 over texts of 6, 2, 2, 3 and 4 characters — and my first guess was 45,
+  // which is what this assertion is for.
+  assert.equal(checked, 43, "every pair over every shape");
+});
+
+test("a selection spanning a <br> keeps its text and its line break", () => {
+  const cleared = selectRange("<strong>a<br>b</strong>", 0, 2);
+  clearFormat(cleared.selection);
+  assert.equal(cleared.markup(), "a\nb", "the break survives as a newline");
+  assert.equal(cleared.text(), "ab");
+
+  const unbolded = selectRange("<strong>a<br>b</strong>", 0, 2);
+  toggleFormat(unbolded.selection, BOLD);
+  assert.equal(unbolded.markup(), "a\nb");
 });

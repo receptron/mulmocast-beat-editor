@@ -2,6 +2,8 @@
 import { ACCENT_COLORS } from "../editorHelpers";
 import type { AccentColor } from "../inlineFormat";
 
+import { ref } from "vue";
+
 defineProps<{ x: number; y: number }>();
 
 const emit = defineEmits<{
@@ -10,6 +12,45 @@ const emit = defineEmits<{
   color: [color: AccentColor];
   clear: [];
 }>();
+
+/**
+ * One tab stop for the whole toolbar, which is what `role="toolbar"` means: arrows move between
+ * the buttons, Tab moves past them. Ten stops would make skipping the toolbar cost ten presses.
+ *
+ * The arrow navigation has no unit test and cannot have one here: moving focus inside the
+ * toolbar makes jsdom collapse the document selection, which unmounts the toolbar mid-test.
+ * A browser keeps the selection — measured in Chromium, Tab reaches the toolbar in one stop,
+ * ArrowRight walks B -> star -> Colour: primary, Enter applies, and focus stays on the button.
+ */
+const focused = ref(0);
+const shell = ref<HTMLElement | null>(null);
+
+/** Asked of the DOM rather than collected per button: one ref, no index bookkeeping to get wrong. */
+const buttonsIn = (): HTMLElement[] => [...(shell.value?.querySelectorAll<HTMLElement>("button") ?? [])];
+
+const moveFocus = (delta: number): void => {
+  const buttons = buttonsIn();
+  if (buttons.length === 0) return;
+  focused.value = (focused.value + delta + buttons.length) % buttons.length;
+  buttons[focused.value]?.focus();
+};
+
+/**
+ * Arrow keys move within the toolbar. Handled by key name rather than with Vue's `.left` /
+ * `.right` modifiers, which also mean mouse buttons and are ambiguous on a keyboard event.
+ */
+const onKeydown = (event: KeyboardEvent): void => {
+  const steps = new Map<string, number>([
+    ["ArrowRight", 1],
+    ["ArrowLeft", -1],
+    ["Home", -focused.value],
+    ["End", buttonsIn().length - 1 - focused.value],
+  ]);
+  const step = steps.get(event.key);
+  if (step === undefined) return;
+  event.preventDefault();
+  moveFocus(step);
+};
 
 /** The swatch each accent renders as. Tailwind needs the class names written out to generate them. */
 const SWATCH: Record<AccentColor, string> = {
@@ -30,33 +71,57 @@ const SWATCH: Record<AccentColor, string> = {
     ever reaches the handler — so the format applies to a selection that no longer exists.
   -->
   <div
+    ref="shell"
     class="fixed z-50 flex items-center gap-1 rounded-lg border border-stone-300 bg-white px-1.5 py-1 text-xs shadow-lg"
     :style="{ left: `${x}px`, top: `${y}px` }"
     role="toolbar"
     aria-label="Format selection"
     @mousedown.prevent
+    @keydown="onKeydown"
   >
-    <button type="button" class="rounded px-2 py-1 font-bold hover:bg-stone-100" title="Bold (** … **) — press again to remove" @click="emit('bold')">B</button>
     <button
       type="button"
+      :tabindex="focused === 0 ? 0 : -1"
+      class="rounded px-2 py-1 font-bold hover:bg-stone-100"
+      title="Bold (** … **) — press again to remove"
+      @click="emit('bold')"
+      @focus="focused = 0"
+    >
+      B
+    </button>
+    <button
+      type="button"
+      :tabindex="focused === 1 ? 0 : -1"
       class="rounded px-2 py-1 font-extrabold text-amber-500 hover:bg-stone-100"
       title="Emphasis (* … *) — press again to remove"
       @click="emit('emphasis')"
+      @focus="focused = 1"
     >
       ★
     </button>
     <div class="mx-1 h-4 w-px bg-stone-200"></div>
     <button
-      v-for="color in ACCENT_COLORS"
+      v-for="(color, index) in ACCENT_COLORS"
       :key="color"
       type="button"
+      :tabindex="focused === index + 2 ? 0 : -1"
       class="h-5 w-5 rounded-full border border-stone-200 transition-transform hover:scale-110"
       :class="SWATCH[color]"
       :title="`Colour: ${color} ({${color}: … })`"
       :aria-label="`Colour: ${color}`"
       @click="emit('color', color)"
+      @focus="focused = index + 2"
     ></button>
     <div class="mx-1 h-4 w-px bg-stone-200"></div>
-    <button type="button" class="rounded px-2 py-1 text-stone-500 hover:bg-stone-100" title="Clear formatting in selection" @click="emit('clear')">×</button>
+    <button
+      type="button"
+      :tabindex="focused === ACCENT_COLORS.length + 2 ? 0 : -1"
+      class="rounded px-2 py-1 text-stone-500 hover:bg-stone-100"
+      title="Clear formatting in selection"
+      @click="emit('clear')"
+      @focus="focused = ACCENT_COLORS.length + 2"
+    >
+      ×
+    </button>
   </div>
 </template>
