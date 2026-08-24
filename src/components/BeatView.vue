@@ -5,7 +5,8 @@ import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
-import { applyInlineEdit, isInlineEditable, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { applyInlineEdit, applyItemMove, isInlineEditable, sameItemList, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { captureItemRects, playItemFlip, type ItemRects } from "../flip";
 import { BOLD, EMPHASIS, clearFormat, colorFormat, formattableSelection, toggleFormat, type AccentColor, type InlineFormat } from "../inlineFormat";
 import { placeToolbar } from "../toolbarPosition";
 import InlineToolbar from "./InlineToolbar.vue";
@@ -49,7 +50,9 @@ const NO_PATHS: ReadonlySet<string> = new Set();
 
 const sanitized = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
 
-const surface = computed<EditingSurface>(() => (editing.value ? withEditingAffordances(sanitized.value) : { html: sanitized.value, paths: NO_PATHS }));
+const surface = computed<EditingSurface>(() =>
+  editing.value ? withEditingAffordances(sanitized.value) : { html: sanitized.value, paths: NO_PATHS, items: NO_PATHS },
+);
 const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
@@ -79,6 +82,66 @@ const editableTarget = (event: Event): HTMLElement | null => {
   const from = event.target;
   const marker = from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
   return marker && surface.value.paths.has(marker.getAttribute("data-mulmo-path") ?? "") ? marker : null;
+};
+
+/**
+ * The list item a drag is carrying, and the rectangles its siblings occupied when it was picked
+ * up. The rectangles are read at drop rather than at dragstart: nothing moves during the drag,
+ * and reading them late keeps a scrolled page honest.
+ */
+const dragging_path = ref<string | null>(null);
+
+/** A drop can only be aimed at an item the render marked, in the array the drag started in. */
+const dropTarget = (event: DragEvent): string | null => {
+  const from = dragging_path.value;
+  const over = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-mulmo-item-path]") : null;
+  const path = over?.getAttribute("data-mulmo-item-path") ?? "";
+  if (!from || !surface.value.items.has(path) || !sameItemList(from, path)) return null;
+  return path;
+};
+
+const startItemDrag = (event: DragEvent) => {
+  const item = event.target instanceof Element ? event.target.closest<HTMLElement>("[data-mulmo-item-path]") : null;
+  const path = item?.getAttribute("data-mulmo-item-path") ?? "";
+  if (!surface.value.items.has(path)) return;
+  dragging_path.value = path;
+  // Firefox starts no drag at all unless something is on the transfer.
+  event.dataTransfer?.setData("text/plain", path);
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+};
+
+const overItem = (event: DragEvent) => {
+  if (!dropTarget(event)) return;
+  // The default action is "reject the drop", so a drop handler is never reached without this.
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+};
+
+/** Set for one render only: the move whose FLIP the next draw has to play. */
+const pending_flip = shallowRef<{ from: string; to: string; rects: ItemRects } | null>(null);
+
+const dropItem = (event: DragEvent) => {
+  const to = dropTarget(event);
+  const from = dragging_path.value;
+  dragging_path.value = null;
+  if (!to || !from) return;
+  event.preventDefault();
+  const rects = captureItemRects(host.value);
+  const next = applyItemMove(props.beat, from, to, surface.value.items);
+  if (!next) return;
+  pending_flip.value = { from, to, rects };
+  emit("update", next);
+};
+
+const endItemDrag = () => {
+  dragging_path.value = null;
+};
+
+/** Play the move the drop recorded, once the new order is on screen. */
+const playPendingFlip = () => {
+  const flip = pending_flip.value;
+  pending_flip.value = null;
+  if (flip) playItemFlip(host.value, flip.rects, flip.from, flip.to);
 };
 
 /**
@@ -374,6 +437,7 @@ watch(
     stopWatchingSelection();
     void draw().catch(() => {});
     openPendingMarker();
+    playPendingFlip();
   },
   { flush: "post" },
 );
@@ -402,6 +466,10 @@ onBeforeUnmount(() => {
       @mousedown="noteIntent"
       @click="beginEdit"
       @keydown="onKeydown"
+      @dragstart="startItemDrag"
+      @dragover="overItem"
+      @drop="dropItem"
+      @dragend="endItemDrag"
       v-html="html"
     ></div>
     <!-- eslint-enable vue/no-v-html -->

@@ -254,3 +254,48 @@ export const pressDownOn = (view: MountedBeat, path: string): void => {
 export const rightPressOn = (view: MountedBeat, path: string): void => {
   at(view, path).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, button: 2 }));
 };
+
+const itemAt = (view: MountedBeat, path: string): HTMLElement => {
+  const element = view.host.querySelector<HTMLElement>(`[data-mulmo-item-path="${path}"]`);
+  if (!element) throw new Error(`no element carries data-mulmo-item-path="${path}"`);
+  return element;
+};
+
+/** The item paths the render put on screen, in document order. */
+export const itemPaths = (view: MountedBeat): string[] =>
+  [...view.host.querySelectorAll("[data-mulmo-item-path]")].map((element) => element.getAttribute("data-mulmo-item-path") ?? "");
+
+/**
+ * Drag the item at `fromPath` onto the one at `toPath`.
+ *
+ * NOT a real drag: jsdom implements neither `DragEvent` nor `DataTransfer`, so these are plain
+ * bubbling events and nothing here exercises `setData`, `effectAllowed`, or `dropEffect` — the
+ * three lines that decide whether Firefox starts the drag at all. Those are checked by dragging
+ * in a real browser; see the PR. What this does cover is the targeting, the permit list, the
+ * emitted beat, and that a rejected drop stays rejected.
+ */
+export const dragItemOnto = (view: MountedBeat, fromPath: string, toPath: string): void => {
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  const target = itemAt(view, toPath);
+  target.dispatchEvent(new dom.window.Event("dragover", { bubbles: true, cancelable: true }));
+  target.dispatchEvent(new dom.window.Event("drop", { bubbles: true, cancelable: true }));
+};
+
+/** Start a drag and let go of it without dropping, the way Escape or a drop outside would. */
+export const dragItemAndAbandon = (view: MountedBeat, fromPath: string): void => {
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragend", { bubbles: true }));
+};
+
+/** Whether `dragover` was accepted — the only signal that a drop would be allowed here. */
+export const dragOverAccepted = (view: MountedBeat, fromPath: string, toPath: string): boolean => {
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  const event = new dom.window.Event("dragover", { bubbles: true, cancelable: true });
+  itemAt(view, toPath).dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
+/** Drop on an item with no drag in flight — what a stray event, or one from elsewhere, looks like. */
+export const dropOn = (view: MountedBeat, path: string): void => {
+  itemAt(view, path).dispatchEvent(new dom.window.Event("drop", { bubbles: true, cancelable: true }));
+};
