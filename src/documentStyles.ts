@@ -41,11 +41,34 @@ const INLINE_EDIT = `
 .beat-fragment--editable [data-mulmo-item-path][draggable="true"] [data-mulmo-path] { cursor: text; }
 `;
 
-/** Append the document-level styles once. Safe to call from every beat. */
-export const ensureDocumentStyles = (): void => {
-  if (typeof document === "undefined" || document.getElementById(STYLE_ID)) return;
+/** The whole sheet, for a host that would rather place it itself. */
+export const beatDocumentCss = (): string => slideUtilityCss + BEAT_TYPOGRAPHY + INLINE_EDIT;
+
+/**
+ * Append these styles once to `root`, which defaults to the page.
+ *
+ * `root` is a `ShadowRoot` when the beat is rendered inside one, and a stylesheet on
+ * `document.head` does NOT cross that boundary — measured in a host that mounts its plugins
+ * that way: the slide itself was fine (its theme variables are inline on the element) but the
+ * editing affordances were not, so a draggable item showed no grab cursor and an editable one
+ * no hover outline. Callers pass `element.getRootNode()`, which answers the document when
+ * there is no shadow root, so the same call is correct either way.
+ *
+ * Once PER ROOT rather than once per page: a page with several shadow roots needs a copy in
+ * each, and the id check is scoped to the root being written to.
+ */
+export type StyleRoot = Document | ShadowRoot;
+
+const isStyleRoot = (node: unknown): node is StyleRoot =>
+  typeof node === "object" && node !== null && typeof (node as { getElementById?: unknown }).getElementById === "function";
+
+export const ensureDocumentStyles = (root?: Node | null): void => {
+  if (typeof document === "undefined") return;
+  const target = isStyleRoot(root) ? root : document;
+  if (target.getElementById(STYLE_ID)) return;
   const style = document.createElement("style");
   style.id = STYLE_ID;
-  style.textContent = slideUtilityCss + BEAT_TYPOGRAPHY + INLINE_EDIT;
-  document.head.appendChild(style);
+  style.textContent = beatDocumentCss();
+  // A ShadowRoot has no `head`; its own children are the equivalent place.
+  ("head" in target ? target.head : target).appendChild(style);
 };

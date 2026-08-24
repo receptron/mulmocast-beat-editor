@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.1.1 — 2026-08-25
+
+### Fixed
+
+- **The editing affordances now reach a beat rendered inside a shadow root** (receptron/mulmoclaude#2947).
+  `ensureDocumentStyles` appended to `document.head`, which does not cross a shadow boundary, so
+  a host that mounts the editor inside one got a draggable item with no grab cursor and an
+  editable one with no hover outline. Measured in MulmoTerminal, which mounts every plugin that
+  way: `cursor` read `auto` in the shadow root and `grab` outside it.
+
+  `BeatView` now passes its own `getRootNode()`, which answers the document when there is no
+  shadow root — so the same call is correct either way and no host has to do anything. The sheet
+  is added once **per root**, since a page with several shadow roots needs a copy in each.
+
+  The slide itself was never affected: its theme variables are inline on the element.
+
+### Added
+
+- `beatDocumentCss()` and `ensureDocumentStyles(root?)` are exported, for a host that would
+  rather place the sheet itself.
+
 ## 1.1.0 — 2026-08-25
 
 Editing on the slide itself is back. 1.0.0 shipped without it — the iframe editor was removed

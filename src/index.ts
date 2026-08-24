@@ -18,6 +18,9 @@ export type { ChartForm, ChartSeries } from "./editors/chartData";
 export { sanitizeFragment } from "./sanitize";
 export { BEAT_TYPES, makeBeat, beatType, beatImage } from "./beatHelpers";
 export { beatsOf, withBeats } from "./scriptHelpers";
+// For a host that places the sheet itself — e.g. one that mounts plugins in a shadow root and
+// injects their CSS as a string rather than letting a component append to a root.
+export { beatDocumentCss, ensureDocumentStyles } from "./documentStyles";
 export type { EditableBeat, BeatType } from "./beatHelpers";
 
 export { defaultTheme, sampleDeck } from "./data/sampleDeck";
