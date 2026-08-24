@@ -20,6 +20,7 @@ import {
   focusOutToForeignToolbar,
   bounceFocusBackTo,
   blurToNowhere,
+  type MountedBeat,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -434,6 +435,17 @@ test("a beat replaced mid-edit cannot write the old element's html into the new 
   assert.equal(emitted, 0, "the replaced beat is left alone");
 });
 
+/**
+ * Codex round 7: refusing the write is not enough. A half-alive session keeps the element
+ * `contenteditable`, so `startEditing` early-returns, no new session is recorded, and the NEXT
+ * edit is refused too — the field is stuck.
+ */
+const assertEditingIsFullyOver = (view: { host: HTMLElement }): void => {
+  assert.equal(view.host.querySelectorAll('[contenteditable="true"]').length, 0, "nothing is left editable");
+  assert.equal(view.host.parentElement?.querySelector('[role="toolbar"]') ?? null, null, "the toolbar is gone");
+  assert.equal(documentListenerCount("selectionchange"), 0, "and the listener with it");
+};
+
 test("a beat replaced by one that renders identically still ends the edit", async () => {
   // Codex round 6. When the replacement renders byte-identical HTML, Vue never touches the DOM,
   // so the edited node stays connected and "has it left the document" answers no. Measured, the
@@ -442,11 +454,25 @@ test("a beat replaced by one that renders identically still ends the edit", asyn
   const view = await mountBeatViewReactive(slide());
   clickPath(view, "title");
   setEditedHtml(view, "title", "STALE");
+  selectWithin(view, "title");
+  await settle();
   view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Before", subtitle: "Sub" } } });
   await settle();
   blurToNowhere(view);
   await settle();
-  const emitted = view.emitted.length;
+
+  assert.equal(view.emitted.length, 0, "the replacement beat is left alone");
+  assertEditingIsFullyOver(view);
+  await assertTheMarkerStillWorks(view);
   view.unmount();
-  assert.equal(emitted, 0, "the replacement beat is left alone");
 });
+
+/** After a refused commit the field must not be stuck: the next edit of it has to land. */
+const assertTheMarkerStillWorks = async (view: MountedBeat): Promise<void> => {
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "AFTER");
+  blurToNowhere(view);
+  await settle();
+  const next = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  assert.equal(next?.image.slide.title, "AFTER", "the next edit of the same marker commits");
+};

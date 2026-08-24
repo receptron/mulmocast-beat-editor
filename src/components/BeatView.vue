@@ -179,6 +179,20 @@ const staysWithinThisEdit = (related: EventTarget | null): boolean => {
   return ownToolbar || (editing_element.value?.contains(related) ?? false);
 };
 
+/**
+ * End the editing session, whether or not anything is written back.
+ *
+ * One place, because a refusal that forgets any part of it leaves the field stuck: the element
+ * stays `contenteditable`, so `startEditing` early-returns and never records a new session, and
+ * the next commit is refused too — measured as an edit the user could not save.
+ */
+const endEditing = (target: HTMLElement) => {
+  target.removeAttribute("contenteditable");
+  editing_element.value = null;
+  editing_beat.value = null;
+  stopWatchingSelection();
+};
+
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
@@ -191,16 +205,12 @@ const commit = (event: FocusEvent) => {
   // into the replacement. Comparing the beat catches both, so it is the only net here; two
   // where either suffices means neither can be break-checked.
   if (editing_beat.value !== props.beat) {
-    editing_element.value = null;
-    editing_beat.value = null;
+    endEditing(target);
     return;
   }
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
-  target.removeAttribute("contenteditable");
-  editing_element.value = null;
-  editing_beat.value = null;
-  stopWatchingSelection();
+  endEditing(target);
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);
 };
@@ -220,9 +230,7 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   } else if (event.key === "Escape") {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
-    target.removeAttribute("contenteditable");
-    editing_element.value = null;
-    stopWatchingSelection();
+    endEditing(target);
     target.blur();
   }
 };

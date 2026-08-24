@@ -279,7 +279,14 @@ test("tidyEditable is not super-linear on the shapes a paste can produce", () =>
   });
   const elapsed = performance.now() - started;
 
-  assert.ok(elapsed < 500, `tidyEditable took ${Math.round(elapsed)}ms over ${TIDY_SHAPES.length} shapes (healthy is under 100ms); the quadratic pass is back`);
+  // Sized from a measurement on the SLOWEST runner, not on my machine. Healthy is ~100ms here
+  // and 749-1099ms on CI (ubuntu and windows, node 22 and 24) — the first budget was 500ms and
+  // red four CI jobs while passing locally. The regression it exists to catch is ~7.7s here, so
+  // tens of seconds there: 3000ms sits well clear of both.
+  assert.ok(
+    elapsed < 3000,
+    `tidyEditable took ${Math.round(elapsed)}ms over ${TIDY_SHAPES.length} shapes (healthy is ~100ms locally, ~1s on CI); the quadratic pass is back`,
+  );
 });
 
 test("a selection that crosses a formatting boundary is still stripped", () => {
