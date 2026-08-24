@@ -47,19 +47,61 @@ indexBeforeMove(index, from, to)  // 今 index にある項目が、移動前に
 
 | 変異 | 結果 |
 |------|------|
-| `draggable` を付けない | 2件 赤 |
-| 同一リスト判定を外す | 1件 赤 |
-| `dragend` で状態を消さない | 1件 赤 |
-| `dragover` で `preventDefault` しない | 1件 赤 |
+| FLIP の配線（`playPendingFlip()`）を削除 | 1件 赤 |
+| invert の符号を反転 | 3件 赤 |
+| drag source を `closest()` に戻す | 1件 赤 |
+| テキスト選択中の抑止を外す | 1件 赤 |
+| 外側への探索をやめて最内マーカーだけ見る | 1件 赤 |
+| 単一要素リストも draggable にする | 1件 赤 |
+| stagger アニメの抑止をやめる | 1件 赤 |
+| 許可リスト（BeatView 側）を外す | 1件 赤 |
 | `indexBeforeMove` を恒等に | 3件 赤 |
-| 許可リストを外す | **最初は 0件（テストが盲目だった）** → 専用ケースを足して 1件 赤 |
+| ホスト相対をやめてビューポート相対に戻す | 1件 赤 |
 
-許可リストの変異が素通りしたのは、他の拒否ケースがすべて `moveByPath` 自身の検証
-（範囲外・別配列・自分自身）で先に落ちていたため。**データ上は正当だが描画されていない
-パス**を使うケースを足して初めて赤くなった。
+## 最初のレビューで露見した、テストの盲点
 
-## jsdom で見られないもの
+`/code-review` が実測で突いた穴。**すべて再現を自分で確認した**:
 
-jsdom は `DragEvent` も `DataTransfer` も実装していない。テストは plain `Event` で駆動するので、
-**`setData` / `effectAllowed` / `dropEffect` の3行は covered ではない**（Firefox が
-そもそもドラッグを開始するかを決める行）。実ブラウザでの確認で補う。
+| 変異 | 当時の結果 |
+|------|-----------|
+| `playPendingFlip()` を丸ごと削除（＝アニメが一切動かない） | **291 pass / 0 fail** |
+| FLIP の符号を反転 | **6 pass / 0 fail** |
+| BeatView 側の許可リスト2箇所を削除 | **291 pass / 0 fail** |
+
+原因は3つとも同じ形で、**ゲートが「純関数」と「画面」の間の継ぎ目を一つも通っていなかった**:
+
+- `test_flip.ts` はコンポーネントを一度も mount しない
+- `test_itemDragView.ts` は emit された beat と描画テキストしか見ない
+- jsdom は矩形をすべて 0 で返すので、mount した経路では原理的に観測できない
+
+対策として、①`playItemFlip` が適用した変位を返すようにし、②`style.transform` への書き込みを
+スパイで記録し、③`Element.prototype.getBoundingClientRect` をプロトタイプごと差し替えて
+mount した状態にレイアウトを与えた（`v-html` が再描画で要素を入れ替えるため、事前に個別の
+要素へスパイを張ることができない）。
+
+**このゲートを作った直後に、実際のバグが1件出た**: `pending_flip` の同一性を「移動前の beat」と
+比べていて、ホストが更新を適用すると必ず不一致になり FLIP が再生されなかった。移動が
+生成した beat と比べるよう修正した。
+
+## レビューで直したもの（21件）
+
+| # | 内容 |
+|---|------|
+| 1,3 | テキスト選択のドラッグが item ドラッグとして扱われ、拒否されたドロップがパス文字列を本文に差し込む（Firefox / WebKit で実測）→ 選択中・編集中は `dragstart` を `preventDefault` |
+| 2 | カード内の `<img>` / `<a>` が drag source になりリストが並べ替わる（Chromium + Firefox で実測）→ `closest()` をやめ、marked 要素自身に限定 |
+| 4 | 入れ子パスのため、カードは padding 部分でしか掴めない（実測）→ ドロップ先を外側へ探索 |
+| 5 | `setData("text/plain", path)` が外部の入力欄にパスを書き込む（実測）→ 専用 MIME タイプに変更し、ドロップは常に `preventDefault` |
+| 6 | `dragging_path` が beat 同一性を持たず、再描画で `dragend` が届かないため latch する → beat を同伴し、`html` watch で消す |
+| 7 | ホストが emit を無視すると `pending_flip` が古い矩形を抱えたまま次の描画で発火 → 生成された beat と一致するときだけ再生 |
+| 8 | deck の stagger CSS（`animation: … both`）が inline transform に勝つため FLIP が効かない（実測）→ 再生中だけ `animation: none` |
+| 9,10,11 | 上記のゲート不在（本節） |
+| 12 | `aria-label="Reorder <path>"` がキーボード操作の無い機能を約束し、`<div>` では属性自体が無効 → 削除 |
+| 13 | 矩形がビューポート相対で、間のスクロールが偽の移動になる → ホスト相対に変更 |
+| 14 | `draw()` がチャートを同期的に破棄した後に「Last」を測っていた → FLIP を `draw()` より前に実行 |
+| 15 | 要素1つのリストにも drag を出していた（既定フィクスチャの `stats`/`timeline`/`manifesto` が該当）→ 2件未満の配列は対象外 |
+| 16 | `splitIndexed` が `splitItemPath` の完全な重複 → 既存を import |
+| 17 | grab カーソル等の手掛かりが一切無かった → `documentStyles.ts` に追加 |
+| 18 | inline transition が消えず、次の transform まで巻き添えでアニメ → `transitionend` で後始末 |
+| 19 | `dragOverAccepted` が `dragstart` を張りっぱなしにしていた → `dragend` で均衡 |
+| 20 | 矩形を拒否判定より前に、しかも beat 全体で測っていた → 成立後に、対象配列だけ |
+| 21 | ChangeLog / README が「この機能は無い」と書いたまま → Unreleased を追加し README を修正 |

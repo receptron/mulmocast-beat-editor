@@ -105,15 +105,33 @@ const markEditableText = (content: DocumentFragment): Set<string> => {
   return paths;
 };
 
-/** Make each marked list item draggable, and answer with the item paths that were marked. */
+/**
+ * Make each marked list item draggable, and answer with the item paths that were marked.
+ *
+ * An array with one entry is skipped: a move needs a different index in the same array, so its
+ * only possible target is itself. Marking it would give a drag ghost and a no-drop cursor
+ * everywhere on the page for a reorder that cannot complete — and the default fixtures for
+ * `stats`, `timeline` and `manifesto` are all length one.
+ *
+ * No `aria-label`: there is no keyboard path to reordering yet, and naming the element after a
+ * path expression promises an affordance a screen reader user cannot reach. On `columns` and
+ * `grid` the marker is a plain `<div>`, where the attribute is prohibited and dropped anyway.
+ */
 const markReorderableItems = (content: DocumentFragment): Set<string> => {
+  const marked = [...content.querySelectorAll("[data-mulmo-item-path]")]
+    .map((element) => ({ element, path: element.getAttribute("data-mulmo-item-path") ?? "" }))
+    .filter(({ path }) => path !== "");
+  const perParent = new Map<string, number>();
+  marked.forEach(({ path }) => {
+    const parent = splitItemPath(path)?.parent;
+    if (parent !== undefined) perParent.set(parent, (perParent.get(parent) ?? 0) + 1);
+  });
   const items = new Set<string>();
-  content.querySelectorAll("[data-mulmo-item-path]").forEach((element) => {
-    const path = element.getAttribute("data-mulmo-item-path") ?? "";
-    if (!path) return;
+  marked.forEach(({ element, path }) => {
+    const parent = splitItemPath(path)?.parent;
+    if (parent === undefined || (perParent.get(parent) ?? 0) < 2) return;
     items.add(path);
     element.setAttribute("draggable", "true");
-    element.setAttribute("aria-label", `Reorder ${path}`);
   });
   return items;
 };

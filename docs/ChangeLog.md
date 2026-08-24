@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **The four things the iframe editor took away are back on the div path** (#53). 1.0.0 recorded
+  them as removed, and that record stands for that release — this is where they return:
+  click-to-edit text on the slide, the inline bold / emphasis / colour toolbar, drag-and-drop
+  reorder of in-slide list items, and the FLIP animation on reorder.
+
+  The reorder is offered only where a move is possible: a marked item whose array has a single
+  entry gets no drag affordance, because its only candidate target is itself. A drag that starts
+  on a text selection, or on a natively-draggable child such as an `<img>` inside a card, is left
+  to the browser rather than taken as a reorder.
+
+### Fixed
+
+- **Inline formatting no longer writes markup deck cannot read back** (#64). Colour and emphasis
+  share one slot, so applying one supersedes the others over that text instead of nesting — a
+  nested `{a:x{b:y}z}` put its own braces on screen and the next edit formatted those.
+
 ## @mulmocast/beat-editor 1.0.0 — 2026-08-23
 
 **The package is renamed.** `@mulmocast/deck-web` becomes `@mulmocast/beat-editor`, and the deck

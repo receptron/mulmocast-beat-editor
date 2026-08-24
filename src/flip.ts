@@ -1,3 +1,5 @@
+import { splitItemPath } from "./editorHelpers";
+
 /**
  * The First-Last-Invert-Play animation for a reordered list.
  *
@@ -17,29 +19,36 @@ export const indexBeforeMove = (index: number, from: number, to: number): number
 
 const ITEM_PATH = "data-mulmo-item-path";
 
-/** Split `stats[2]` into its array and its index, or null for anything else. */
-const splitIndexed = (path: string): { parent: string; index: number } | null => {
-  const match = /^(.*?)\[(\d+)\]$/.exec(path);
-  return match ? { parent: match[1].replace(/\.$/, ""), index: Number(match[2]) } : null;
-};
-
 /** The path this element's item held before the move, or null when the move did not touch it. */
 export const pathBeforeMove = (path: string, fromPath: string, toPath: string): string | null => {
-  const now = splitIndexed(path);
-  const from = splitIndexed(fromPath);
-  const to = splitIndexed(toPath);
+  const now = splitItemPath(path);
+  const from = splitItemPath(fromPath);
+  const to = splitItemPath(toPath);
   if (!now || !from || !to || now.parent !== from.parent || from.parent !== to.parent) return null;
   return `${now.parent}[${indexBeforeMove(now.index, from.index, to.index)}]`;
 };
 
-export type ItemRects = ReadonlyMap<string, DOMRect>;
+/**
+ * Where each item sat, measured from the host rather than from the viewport.
+ *
+ * The two measurements straddle a full re-render, and anything that scrolls between them —
+ * restoring focus to a marker, a card whose `overflow-auto` resets on rebuild — would otherwise
+ * read as displacement and animate items that never moved.
+ */
+export type ItemRects = ReadonlyMap<string, { left: number; top: number }>;
 
-/** Every marked item's rectangle, keyed by its path. */
-export const captureItemRects = (root: HTMLElement | null): ItemRects => {
-  const rects = new Map<string, DOMRect>();
-  root?.querySelectorAll(`[${ITEM_PATH}]`).forEach((element) => {
+const relativeTo = (origin: DOMRect, rect: DOMRect) => ({ left: rect.left - origin.left, top: rect.top - origin.top });
+
+/** Every marked item's position, keyed by its path. `within` narrows it to one array. */
+export const captureItemRects = (root: HTMLElement | null, within?: string): ItemRects => {
+  const rects = new Map<string, { left: number; top: number }>();
+  if (!root) return rects;
+  const origin = root.getBoundingClientRect();
+  root.querySelectorAll(`[${ITEM_PATH}]`).forEach((element) => {
     const path = element.getAttribute(ITEM_PATH);
-    if (path) rects.set(path, element.getBoundingClientRect());
+    if (!path) return;
+    if (within !== undefined && splitItemPath(path)?.parent !== within) return;
+    rects.set(path, relativeTo(origin, element.getBoundingClientRect()));
   });
   return rects;
 };
@@ -49,22 +58,17 @@ const TRANSITION = "transform 180ms ease";
 /** Force the pending style writes to be laid out, so the next ones start a new frame. */
 const reflow = (root: HTMLElement): number => root.offsetHeight;
 
-/**
- * Put each item back where it was, then let it travel to where it now is.
- *
- * Answers how many items were actually animated, which is what a test can assert: a FLIP that
- * silently matches nothing looks exactly like one that had nothing to do.
- */
-type Displacement = { element: HTMLElement; dx: number; dy: number };
+export type Displacement = { element: HTMLElement; dx: number; dy: number };
 
-/** How far each item has travelled from the rectangle its predecessor held. */
+/** How far each item has travelled from the position its predecessor held. */
 const displacements = (root: HTMLElement, before: ItemRects, fromPath: string, toPath: string): Displacement[] => {
+  const origin = root.getBoundingClientRect();
   const moves: Displacement[] = [];
   root.querySelectorAll<HTMLElement>(`[${ITEM_PATH}]`).forEach((element) => {
     const path = element.getAttribute(ITEM_PATH);
-    const was = path === null ? null : before.get(pathBeforeMove(path, fromPath, toPath) ?? "");
+    const was = path === null ? undefined : before.get(pathBeforeMove(path, fromPath, toPath) ?? "");
     if (!was) return;
-    const now = element.getBoundingClientRect();
+    const now = relativeTo(origin, element.getBoundingClientRect());
     const dx = was.left - now.left;
     const dy = was.top - now.top;
     if (dx !== 0 || dy !== 0) moves.push({ element, dx, dy });
@@ -72,19 +76,54 @@ const displacements = (root: HTMLElement, before: ItemRects, fromPath: string, t
   return moves;
 };
 
-export const playItemFlip = (root: HTMLElement | null, before: ItemRects, fromPath: string, toPath: string): number => {
-  if (!root || before.size === 0) return 0;
+/**
+ * Deck's stagger intro animates `transform` on exactly these elements, and an animation's own
+ * value outranks inline style for as long as it applies — with `both` that is forever. Suppress
+ * it for the duration, and put back whatever the element declared inline.
+ */
+const withoutStaggerAnimation = (element: HTMLElement): (() => void) => {
+  const declared = element.style.animation;
+  element.style.animation = "none";
+  return () => {
+    element.style.animation = declared;
+  };
+};
+
+const clearWhenSettled = (element: HTMLElement, restoreAnimation: () => void): void => {
+  element.addEventListener(
+    "transitionend",
+    () => {
+      element.style.transition = "";
+      element.style.transform = "";
+      restoreAnimation();
+    },
+    { once: true },
+  );
+};
+
+/**
+ * Put each item back where it was, then let it travel to where it now is.
+ *
+ * Answers the displacements it applied, which is what a test can assert: a FLIP that silently
+ * matches nothing looks exactly like one that had nothing to do, and the invert step — the whole
+ * of FLIP — is otherwise unobservable, since the play clears it in the same synchronous call.
+ */
+export const playItemFlip = (root: HTMLElement | null, before: ItemRects, fromPath: string, toPath: string): Displacement[] => {
+  if (!root || before.size === 0) return [];
   const moves = displacements(root, before, fromPath, toPath);
-  moves.forEach(({ element, dx, dy }) => {
+  const restores = moves.map(({ element, dx, dy }) => {
+    const restoreAnimation = withoutStaggerAnimation(element);
     element.style.transition = "none";
     element.style.transform = `translate(${dx}px, ${dy}px)`;
+    return restoreAnimation;
   });
   // Reading a layout property between the two writes is what makes them two frames rather than
   // one: without it the browser coalesces them and the element simply appears at its new place.
   reflow(root);
-  moves.forEach(({ element }) => {
+  moves.forEach(({ element }, index) => {
+    clearWhenSettled(element, restores[index]);
     element.style.transition = TRANSITION;
     element.style.transform = "";
   });
-  return moves.length;
+  return moves;
 };
