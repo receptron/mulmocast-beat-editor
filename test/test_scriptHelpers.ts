@@ -82,30 +82,33 @@ test("a beats array carrying an element the editor cannot render still lists", a
  * the array where it started, so a single comparison afterwards reports nothing — measured,
  * that mutation walked through a whole-sweep assertion.
  */
-const clickEveryControl = (host: HTMLElement, afterEach: () => void): string[] =>
+type Click = { label: string; emits: number };
+
+const clickEveryControl = (host: HTMLElement, emitted: unknown[], afterEach: () => void): Click[] =>
   [...host.querySelectorAll("button")].map((button) => {
-    const label = button.textContent.trim();
+    const before = emitted.length;
     button.click();
     afterEach();
-    return label;
+    return { label: button.textContent.trim(), emits: emitted.length - before };
   });
 
 /**
- * The controls the sweep must have found.
+ * Every write path must have actually RUN, measured by what each click emitted.
  *
- * A button COUNT would let coverage drop silently — `update` is reached only because the
- * fixture's first beat is a slide, whose editor pane offers "+ chip". Naming them makes the
- * fixture's contribution visible instead of incidental.
+ * A button count, or even a label list, only says a control was on screen. `update` is reached
+ * solely because the fixture's first beat is a slide, whose editor pane renders "+ chip", so
+ * what has to be asserted is that clicking it produced an emit — not that it existed.
  */
-const assertReachesEveryArrayOperation = (labels: string[]): void => {
-  ["↑", "↓", "✕"].forEach((label) => assert.ok(labels.includes(label), `the sweep needs a ${label} control, got ${JSON.stringify(labels)}`));
+const assertReachesEveryArrayOperation = (clicks: Click[]): void => {
+  const emitsFrom = (matches: (label: string) => boolean): number =>
+    clicks.filter((click) => matches(click.label)).reduce((total, click) => total + click.emits, 0);
+  const seen = JSON.stringify(clicks);
+  assert.ok(emitsFrom((label) => label === "\u2191" || label === "\u2193") >= 1, `a reorder must have emitted: ${seen}`);
+  assert.ok(emitsFrom((label) => label === "\u2715") >= 1, `a remove must have emitted: ${seen}`);
+  assert.ok(emitsFrom((label) => label.startsWith("+ Add")) >= 1, `the add must have emitted: ${seen}`);
   assert.ok(
-    labels.some((label) => label.startsWith("+ Add")),
-    "the sweep needs the add control",
-  );
-  assert.ok(
-    labels.some((label) => label.startsWith("+ ") && !label.startsWith("+ Add")),
-    "the sweep needs an editor-pane control, which is what reaches `update`",
+    emitsFrom((label) => label.startsWith("+ ") && !label.startsWith("+ Add")) >= 1,
+    `an editor-pane control must have emitted, which is what reaches update: ${seen}`,
   );
 };
 
@@ -129,12 +132,12 @@ test("a full edit cycle never writes through to the host's script", async () => 
   const originalArray = host.beats;
 
   const view = await mountBeatList(beatsOf(host));
-  const labels = clickEveryControl(view.host, () => assert.equal(JSON.stringify(host), frozen, "a control wrote through to the host"));
+  const clicks = clickEveryControl(view.host, view.emitted, () => assert.equal(JSON.stringify(host), frozen, "a control wrote through to the host"));
   await new Promise((resolve) => setTimeout(resolve, 50));
   const emitted = [...view.emitted];
   view.unmount();
 
-  assertReachesEveryArrayOperation(labels);
+  assertReachesEveryArrayOperation(clicks);
   assert.ok(emitted.length >= 4, `the sweep must actually drive the editor, got ${emitted.length} emits`);
   assert.equal(host.beats, originalArray, "including the array identity it handed over");
 

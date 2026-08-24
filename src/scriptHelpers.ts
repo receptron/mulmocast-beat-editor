@@ -29,7 +29,15 @@ export const beatsOf = (script: unknown): EditableBeat[] => {
   return isBeatArray(beats) ? beats : [];
 };
 
-/** The script with its beats replaced and every other field kept. */
+/**
+ * The script with its beats replaced and every other field kept.
+ *
+ * A shallow copy: the fields it carries over are shared, which is what a "replace the beats"
+ * operation should do. For anything the type forbids — a JS host passing an array, a string,
+ * or null — the spread is what you would expect and not what you want (`["a"]` comes back as
+ * `{"0":"a", beats}`), so the type is the guard. `beatsOf` answers `[]` for all of those, so a
+ * host that used both would see an empty editor before it saw a malformed script.
+ */
 export const withBeats = <T extends object>(script: T, beats: EditableBeat[]): T & { beats: EditableBeat[] } => ({
   ...script,
   beats,
