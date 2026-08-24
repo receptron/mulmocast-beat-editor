@@ -75,6 +75,40 @@ test("a beats array carrying an element the editor cannot render still lists", a
   assert.ok(cards > 0 || text.length > 0, "the list rendered");
 });
 
+/**
+ * Click every control, checking `afterEach` between clicks, and answer with what was clicked.
+ *
+ * Between EVERY click, not once at the end: an in-place reorder followed by its inverse leaves
+ * the array where it started, so a single comparison afterwards reports nothing — measured,
+ * that mutation walked through a whole-sweep assertion.
+ */
+const clickEveryControl = (host: HTMLElement, afterEach: () => void): string[] =>
+  [...host.querySelectorAll("button")].map((button) => {
+    const label = button.textContent.trim();
+    button.click();
+    afterEach();
+    return label;
+  });
+
+/**
+ * The controls the sweep must have found.
+ *
+ * A button COUNT would let coverage drop silently — `update` is reached only because the
+ * fixture's first beat is a slide, whose editor pane offers "+ chip". Naming them makes the
+ * fixture's contribution visible instead of incidental.
+ */
+const assertReachesEveryArrayOperation = (labels: string[]): void => {
+  ["↑", "↓", "✕"].forEach((label) => assert.ok(labels.includes(label), `the sweep needs a ${label} control, got ${JSON.stringify(labels)}`));
+  assert.ok(
+    labels.some((label) => label.startsWith("+ Add")),
+    "the sweep needs the add control",
+  );
+  assert.ok(
+    labels.some((label) => label.startsWith("+ ") && !label.startsWith("+ Add")),
+    "the sweep needs an editor-pane control, which is what reaches `update`",
+  );
+};
+
 /** A script shaped like a host's: beats, plus the fields a careless write-back would drop. */
 const hostScript = () => ({
   presentationStyle: { canvasSize: { width: 1280, height: 720 } },
@@ -95,19 +129,12 @@ test("a full edit cycle never writes through to the host's script", async () => 
   const originalArray = host.beats;
 
   const view = await mountBeatList(beatsOf(host));
-  const buttons = [...view.host.querySelectorAll("button")];
-  // Checked after EVERY click, not once at the end: an in-place reorder followed by its inverse
-  // leaves the array where it started, so a single comparison at the end reports nothing —
-  // measured, that mutation passed a whole-sweep assertion.
-  buttons.forEach((button, index) => {
-    button.click();
-    assert.equal(JSON.stringify(host), frozen, `click ${index} ("${(button.textContent ?? "").trim()}") wrote through to the host`);
-  });
+  const labels = clickEveryControl(view.host, () => assert.equal(JSON.stringify(host), frozen, "a control wrote through to the host"));
   await new Promise((resolve) => setTimeout(resolve, 50));
   const emitted = [...view.emitted];
   view.unmount();
 
-  assert.ok(buttons.length >= 6, `the sweep must reach every array operation, got ${buttons.length} buttons`);
+  assertReachesEveryArrayOperation(labels);
   assert.ok(emitted.length >= 4, `the sweep must actually drive the editor, got ${emitted.length} emits`);
   assert.equal(host.beats, originalArray, "including the array identity it handed over");
 
