@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/browser";
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
@@ -59,6 +59,14 @@ const shell = ref<HTMLElement | null>(null);
 
 /** The element being edited, remembered because a commit can be triggered from the toolbar. */
 const editing_element = ref<HTMLElement | null>(null);
+
+/**
+ * The beat that edit belongs to. A commit may only ever write back to the one it started on.
+ *
+ * `shallowRef`, because `ref` wraps an object value in a reactive proxy and the comparison
+ * against the raw `props.beat` would then never match — measured, every commit was refused.
+ */
+const editing_beat = shallowRef<EditableBeat | null>(null);
 
 /**
  * The editable element a pointer or key event happened inside, if any.
@@ -137,6 +145,7 @@ const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
   editing_element.value = target;
+  editing_beat.value = props.beat;
   target.setAttribute("contenteditable", "true");
   startWatchingSelection();
   if (focusIt || document.activeElement !== target) target.focus();
@@ -173,29 +182,24 @@ const staysWithinThisEdit = (related: EventTarget | null): boolean => {
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
-  // Never write from an element that has left the document.
+  if (staysWithinThisEdit(event.relatedTarget)) return;
+  // An edit belongs to the beat it started on, and may not be written to a different one.
   //
-  // Clearing the ref wherever an edit ends would work too, and both together is worse than
-  // either: neither can be break-checked, because each alone is sufficient. This one is kept
-  // because it is the invariant of the WRITE path and holds for an exit nobody has written yet.
-  // Measured without it: replacing the beat mid-edit and then blurring the new marker wrote the
-  // old element's html — `title: "STALE"` — into the current beat.
-  if (!target.isConnected) {
+  // The obvious guard — refuse a node that has left the document — is not enough: a host can
+  // replace the beat with a different object that renders byte-identical HTML, and then Vue
+  // never touches the DOM and the node stays connected. Measured, that wrote the typed text
+  // into the replacement. Comparing the beat catches both, so it is the only net here; two
+  // where either suffices means neither can be break-checked.
+  if (editing_beat.value !== props.beat) {
     editing_element.value = null;
+    editing_beat.value = null;
     return;
   }
-  // Only a hop between the text and its own toolbar is not the end of an edit. Tabbing into the
-  // toolbar must not commit, or the toolbar unmounts before a keyboard user can press anything;
-  // and an action bounces focus text -> button, which must not commit either.
-  //
-  // "anywhere inside the beat" is too wide, and losing that distinction LOSES DATA: measured,
-  // editing the title and then clicking the subtitle of the same beat left both elements
-  // editable and committed only the second, dropping the title's edit silently.
-  if (staysWithinThisEdit(event.relatedTarget)) return;
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
   target.removeAttribute("contenteditable");
   editing_element.value = null;
+  editing_beat.value = null;
   stopWatchingSelection();
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);

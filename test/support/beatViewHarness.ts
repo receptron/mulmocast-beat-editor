@@ -227,3 +227,9 @@ export const bounceFocusBackTo = (view: MountedBeat, path: string): void => {
   const button = view.host.parentElement?.querySelector<HTMLElement>('[role="toolbar"] button');
   button?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
 };
+
+/** Blur the element being edited with nothing receiving focus, as clicking the page does. */
+export const blurToNowhere = (view: MountedBeat): void => {
+  const editing = view.host.querySelector<HTMLElement>('[contenteditable="true"]') ?? view.host.querySelector<HTMLElement>("[data-mulmo-path]");
+  editing?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+};

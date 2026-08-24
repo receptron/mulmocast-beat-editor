@@ -19,6 +19,7 @@ import {
   focusOutTo,
   focusOutToForeignToolbar,
   bounceFocusBackTo,
+  blurToNowhere,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -431,4 +432,21 @@ test("a beat replaced mid-edit cannot write the old element's html into the new 
   const emitted = view.emitted.length;
   view.unmount();
   assert.equal(emitted, 0, "the replaced beat is left alone");
+});
+
+test("a beat replaced by one that renders identically still ends the edit", async () => {
+  // Codex round 6. When the replacement renders byte-identical HTML, Vue never touches the DOM,
+  // so the edited node stays connected and "has it left the document" answers no. Measured, the
+  // typed text was written into the replacement beat.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "STALE");
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Before", subtitle: "Sub" } } });
+  await settle();
+  blurToNowhere(view);
+  await settle();
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(emitted, 0, "the replacement beat is left alone");
 });
