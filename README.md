@@ -47,6 +47,27 @@ const beats = ref<EditableBeat[]>([makeBeat("textSlide"), makeBeat("chart")]);
 
 A beat is edited as `Record<string, unknown>`, not as the cli's `MulmoBeat`: a half-typed url or a `chartData` mid-keystroke is routinely invalid, and `beatToHtml` returns `undefined` for anything it cannot render, so the preview degrades instead of breaking.
 
+### When your host owns a whole MulmoScript
+
+`BeatListEditor` takes and emits the beat array. If what you hold is a whole script, `beatsOf` and `withBeats` are the two lines in between:
+
+```vue
+<script setup lang="ts">
+import { beatsOf, withBeats, BeatListEditor, type EditableBeat } from "@mulmocast/beat-editor";
+
+const props = defineProps<{ script: Record<string, unknown> }>();
+const emit = defineEmits<{ "update:script": [script: Record<string, unknown>] }>();
+</script>
+
+<template>
+  <BeatListEditor :beats="beatsOf(props.script)" @update:beats="(beats: EditableBeat[]) => emit('update:script', withBeats(props.script, beats))" />
+</template>
+```
+
+Write `withBeats(script, beats)` rather than `{ beats }` — the second drops `presentationStyle`, `slideParams`, and everything else the script carried, and nothing tells you it happened.
+
+`beatsOf` answers with an empty array for anything without a usable `beats` array, so it is safe to call before the script has loaded. It hands through **every** element, including one the editor cannot render: dropping one would round-trip as deletion the next time the host wrote the array back.
+
 ### Register your own beat editor
 
 Which editor opens for a beat is decided by one list. Pass your own and you can replace what ships, or add a second way into a type that already has one — which is how `chart` gets both a form and a raw-JSON view.
@@ -106,6 +127,7 @@ The demo registers one (`textSlide.outline`) on top of the defaults, so the tab 
 | `sanitizeFragment` | The sanitizer `BeatView` runs a fragment through before inserting it. |
 | `defaultTheme` / `sampleDeck` | Data helpers for quick starts. |
 | `makeBeat` / `BEAT_TYPES` / `beatType` / `beatImage` | Beat helpers, for building the array a host edits. |
+| `beatsOf` / `withBeats` | Read and write a script's `beats` when the host owns a whole MulmoScript. |
 
 The Inspector covers every layout (`title` / `bigQuote` / `columns` / `comparison` / `grid` / `stats` / `timeline` / `split` / `matrix` / `table` / `funnel` / `waterfall` / `manifesto`) and every content block type (`text` / `bullets` / `callout` / `tag` / `code` / `metric` / `divider` / `image` / `imageRef` / `chart` / `mermaid` / `section` / `table`), with full CRUD + reorder on every array.
 

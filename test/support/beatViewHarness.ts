@@ -1,6 +1,6 @@
 // Must come first: it installs the DOM globals before anything can load Vue. See domGlobals.ts.
 import { vueCanRender } from "./vueCanary";
-import { dom, compiled } from "./editorHarness";
+import { dom, compiled, type EditorName } from "./editorHarness";
 import type { EditableBeat } from "../../src/beatHelpers";
 
 /**
@@ -27,21 +27,33 @@ const mountPointIn = (): HTMLElement => {
   return element;
 };
 
-export const mountBeatView = async (beat: EditableBeat, options: { editable: boolean }): Promise<MountedBeat> => {
+/** Mount one compiled component with `props`, and hand back the point it was mounted at. */
+const mount = async (name: EditorName, props: Record<string, unknown>): Promise<{ mountPoint: HTMLElement; unmount: () => void }> => {
   await vueCanRender;
   const { createApp, h } = await import("vue");
   const components = await compiled;
   const mountPoint = mountPointIn();
-  const emitted: unknown[] = [];
-  const props = { beat, idPrefix: "probe", editable: options.editable, onUpdate: (next: unknown) => emitted.push(next) };
-  const app = createApp({ render: () => h(components.BeatView, props) });
+  const app = createApp({ render: () => h(components[name], props) });
   app.mount(mountPoint);
+  return {
+    mountPoint,
+    unmount: () => {
+      app.unmount();
+      mountPoint.remove();
+    },
+  };
+};
+
+export const mountBeatView = async (beat: EditableBeat, options: { editable: boolean }): Promise<MountedBeat> => {
+  const emitted: unknown[] = [];
+  const { mountPoint, unmount } = await mount("BeatView", {
+    beat,
+    idPrefix: "probe",
+    editable: options.editable,
+    onUpdate: (next: unknown) => emitted.push(next),
+  });
   const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
   if (!host) throw new Error("BeatView rendered no fragment — the beat did not render at all");
-  const unmount = () => {
-    app.unmount();
-    mountPoint.remove();
-  };
   return { host, emitted, unmount };
 };
 
@@ -118,4 +130,11 @@ export const blurAsIfEditing = (view: MountedBeat, path: string, html: string): 
   element.setAttribute("contenteditable", "true");
   element.innerHTML = html;
   element.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true }));
+};
+
+/** Mount the whole list editor, to see a beats array the way a host would hand one over. */
+export const mountBeatList = async (beats: EditableBeat[]): Promise<MountedBeat> => {
+  const emitted: unknown[] = [];
+  const { mountPoint, unmount } = await mount("BeatListEditor", { beats, "onUpdate:beats": (next: unknown) => emitted.push(next) });
+  return { host: mountPoint, emitted, unmount };
 };
