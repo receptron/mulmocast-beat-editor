@@ -195,6 +195,16 @@ const startEditing = (target: HTMLElement, focusIt: boolean) => {
  */
 const pending_path = ref<string | null>(null);
 
+/**
+ * The intent, once a commit has actually happened and a rebuild is therefore coming.
+ *
+ * Promoted from `pending_path` inside the commit rather than read straight from it: a press
+ * that never became a click — a drag away, a right-button press — leaves the pending path set,
+ * and consuming that directly meant the NEXT unrelated re-render opened a field nobody asked
+ * for. Measured, that is exactly what happened.
+ */
+const carried_path = ref<string | null>(null);
+
 const noteIntent = (event: MouseEvent) => {
   if (!editing.value) return;
   pending_path.value = editableTarget(event)?.getAttribute("data-mulmo-path") ?? null;
@@ -212,8 +222,8 @@ const beginEdit = (event: MouseEvent) => {
 
 /** Open the marker a click was heading for when the fragment was rebuilt out from under it. */
 const openPendingMarker = () => {
-  const path = pending_path.value;
-  pending_path.value = null;
+  const path = carried_path.value;
+  carried_path.value = null;
   if (!path || !editing.value) return;
   const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
   if (marker) startEditing(marker, true);
@@ -273,6 +283,8 @@ const commit = (event: FocusEvent) => {
   const html = target.innerHTML;
   endEditing(target);
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
+  carried_path.value = next ? pending_path.value : null;
+  pending_path.value = null;
   if (next) emit("update", next);
 };
 

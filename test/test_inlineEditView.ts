@@ -508,6 +508,43 @@ test("a click on another marker survives the rebuild its own commit causes", asy
   assert.deepEqual(editable, ["subtitle"], "the marker the pointer went down on is the one that opens");
 });
 
+test("a press that never becomes a click opens nothing later", async () => {
+  // Found by asking what leaves an intent set. Pressing on a marker and releasing somewhere
+  // else — a drag away, a right-button press — records the path with no commit behind it.
+  // Measured before the intent was promoted only inside a commit: the next unrelated
+  // re-render opened that field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  pressDownOn(view, "title");
+  await settle();
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Something else", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "no field opens on a re-render the press had nothing to do with");
+});
+
+test("a blur that writes nothing carries no intent either", async () => {
+  // A commit runs on every blur; it writes only when something changed. Carrying the intent
+  // regardless leaves it set with no rebuild coming — and the next unrelated re-render spends
+  // it. Nothing typed here, so `applyInlineEdit` answers null.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 0, "an untouched field writes nothing");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Elsewhere", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "the re-render opens nothing");
+});
+
 test("a click that lands normally leaves no intent behind", async () => {
   // Otherwise the next unrelated re-render would open an editor nobody asked for.
   const { mountBeatViewReactive } = await import("./support/beatViewHarness");
