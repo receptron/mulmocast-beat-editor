@@ -21,6 +21,8 @@ import {
   bounceFocusBackTo,
   blurToNowhere,
   type MountedBeat,
+  pressDownOn,
+  rightPressOn,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -481,3 +483,252 @@ const assertTheMarkerStillWorks = async (view: MountedBeat): Promise<void> => {
   const next = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
   assert.equal(next?.image.slide.title, "AFTER", "the next edit of the same marker commits");
 };
+
+test("a click on another marker survives the rebuild its own commit causes", async () => {
+  // #61. Pressing on another field commits the one being edited, the parent replaces the beat,
+  // and `v-html` rebuilds the fragment — so the `click` lands on a detached node and the
+  // delegated handler never sees it. Measured on main: the field did not open and a second
+  // click was needed. `mousedown` runs before all of that.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  // `hostApplies` because the timing is the point: a real host replaces the beat inside the
+  // emit, so Vue's flush is queued there. Driving the replacement from the test instead put it
+  // a tick late and the intent had already been dropped.
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  await settle();
+
+  const editable = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(editable, ["subtitle"], "the marker the pointer went down on is the one that opens");
+});
+
+test("a press that never becomes a click opens nothing later", async () => {
+  // Found by asking what leaves an intent set. Pressing on a marker and releasing somewhere
+  // else — a drag away, a right-button press — records the path with no commit behind it.
+  // Measured before the intent was promoted only inside a commit: the next unrelated
+  // re-render opened that field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  pressDownOn(view, "title");
+  await settle();
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Something else", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "no field opens on a re-render the press had nothing to do with");
+});
+
+test("a blur that writes nothing carries no intent either", async () => {
+  // A commit runs on every blur; it writes only when something changed. Carrying the intent
+  // regardless leaves it set with no rebuild coming — and the next unrelated re-render spends
+  // it. Nothing typed here, so `applyInlineEdit` answers null.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 0, "an untouched field writes nothing");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Elsewhere", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "the re-render opens nothing");
+});
+
+test("a click that lands normally leaves no intent behind", async () => {
+  // Otherwise the next unrelated re-render would open an editor nobody asked for.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  pressDownOn(view, "title");
+  clickPath(view, "title");
+  await settle();
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Other", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const editable = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(editable, 0, "the re-render opens nothing");
+});
+
+test("Enter leaves the caret at the END of the field", async () => {
+  // #62. Chromium does not place a caret in an element that only became `contenteditable` this
+  // tick, and focusing it again on a later tick does not help — measured, all three. Without a
+  // caret inside, the next `Cmd+A` selects the whole page instead of the field.
+  //
+  // Asserted as a POSITION, not merely as "a caret exists": jsdom is more forgiving than
+  // Chromium and puts one at offset 0 on its own, so "inside and collapsed" passes with the
+  // fix removed. Where it sits is what discriminates — and the end is what makes typing append
+  // rather than replace.
+  const view = await mountBeatView(slide(), { editable: true });
+  pressOn(view, "title", "Enter");
+  await settle();
+  const selection = view.host.ownerDocument.defaultView?.getSelection();
+  const marker = view.host.querySelector('[data-mulmo-path="title"]');
+  const at_end = selection?.anchorNode === marker && selection.anchorOffset === marker?.childNodes.length;
+  const collapsed = selection?.isCollapsed;
+  view.unmount();
+  assert.equal(at_end, true, "the caret is at the end of the field");
+  assert.equal(collapsed, true, "and it is a caret, not a selection — typing must not replace the text");
+});
+
+test("a right-click records no intent", async () => {
+  // Codex round 1. A right-button press on another marker still moves focus, so the edit
+  // commits and the fragment rebuilds — and the field the context menu was aimed at would
+  // open behind it. `hostApplies` because that rebuild is same-tick, which is the only window
+  // an intent now survives.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  rightPressOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  const committed = view.emitted.length;
+  view.unmount();
+  assert.equal(committed, 1, "the edit still commits");
+  assert.equal(opened, 0, "but nothing opens");
+});
+
+test("Escape abandons a press on another marker too", async () => {
+  // Otherwise the press sits there and the next commit carries it. The later edit is started
+  // with the KEYBOARD on purpose: a click clears the intent by itself, so a test that clicks
+  // cannot tell whether Escape did anything.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  pressOn(view, "title", "Escape");
+  await settle();
+
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});
+
+test("an update the host ignores leaves no intent to spend later", async () => {
+  // A host is free to drop an update. Then there is no rebuild for the intent to ride, and
+  // measured, it waited: a later unrelated re-render opened the field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 1, "the edit was offered");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Unrelated", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(opened, 0, "nothing opens on a re-render the press had nothing to do with");
+});
+
+test("an intent cannot land on a different beat that happens to have the same path", async () => {
+  // Codex round 2. A path is just a string, and every slide has a `subtitle`. Carrying only
+  // the path meant a replacement that was NOT the emitted beat spent the intent all the same.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 1, "the edit was offered");
+
+  // The host applies something else entirely — a different beat object, same paths.
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Another", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the press belonged to the beat that is no longer here");
+});
+
+test("a press invalidated by an unrelated rebuild is not carried by a later commit", async () => {
+  // Codex round 3. The rebuild clears the CARRIED intent but was leaving the PENDING one, so a
+  // press during an edit that an external replacement interrupted rode along on whatever
+  // committed next.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+
+  // The host replaces the beat before the click or the commit gets there.
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+
+  // Now an ordinary keyboard edit, which must not drag the abandoned press along.
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});
+
+test("a refused commit drops the press it was carrying", async () => {
+  // The beat-identity refusal writes nothing, so there is nothing to carry — and the press
+  // belonged to the session being refused.
+  //
+  // The replacement renders byte-identical HTML on purpose: that is the only way to reach the
+  // refusal WITHOUT a rebuild, and the rebuild clears the pending press by itself. With a
+  // visible replacement this test cannot tell whether the refusal did anything.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Before", subtitle: "Sub" } } });
+  await settle();
+  blurToNowhere(view);
+  await settle();
+  assert.equal(view.emitted.length, 0, "the refusal writes nothing");
+
+  // A later edit commits for real. The abandoned press must not ride along.
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the refused session's press opens nothing");
+});
+
+test("a press with nothing being edited is not an intent at all", async () => {
+  // Codex round 4. The intent exists to survive the rebuild a commit causes. With no edit in
+  // progress there is no commit and no rebuild — and recording anyway left the press for a
+  // later keyboard-started commit to spend, opening the wrong field.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  pressDownOn(view, "title");
+
+  // No click followed. Now edit a DIFFERENT marker entirely, from the keyboard.
+  pressOn(view, "subtitle", "Enter");
+  setEditedHtml(view, "subtitle", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});

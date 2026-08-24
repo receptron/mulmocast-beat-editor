@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/browser";
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
@@ -154,6 +154,24 @@ const applyColor = (color: AccentColor) => applyFormat(colorFormat(color));
 
 const applyClear = () => keepingToolbarFocus(() => clearFormat(document.getSelection()));
 
+/**
+ * Put the caret at the end of an element that has just become editable.
+ *
+ * Chromium does not place one in an element that only became `contenteditable` this tick, and
+ * focusing it again later does not help — measured, all three: after Enter the selection was
+ * outside the element and `Cmd+A` selected the whole page. The mouse path never showed it
+ * because the click places the caret itself.
+ */
+const placeCaretIn = (target: HTMLElement) => {
+  const selection = document.getSelection();
+  if (!selection) return;
+  const caret = document.createRange();
+  caret.selectNodeContents(target);
+  caret.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(caret);
+};
+
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
@@ -161,14 +179,76 @@ const startEditing = (target: HTMLElement, focusIt: boolean) => {
   editing_beat.value = props.beat;
   target.setAttribute("contenteditable", "true");
   startWatchingSelection();
-  if (focusIt || document.activeElement !== target) target.focus();
+  if (focusIt || document.activeElement !== target) {
+    target.focus();
+    placeCaretIn(target);
+  }
+};
+
+/**
+ * The marker a pointer went down on, kept until the click that follows lands.
+ *
+ * Pressing on another field commits the one being edited, the parent replaces the beat, and
+ * `v-html` rebuilds the fragment — so by the time the `click` fires, its target is detached
+ * and the delegated handler never sees it. Measured: the field did not open and a second
+ * click was needed. `mousedown` runs before all of that, while the target is still there.
+ */
+const pending_path = ref<string | null>(null);
+
+/**
+ * The intent, tied to the beat the commit emitted.
+ *
+ * Promoted from `pending_path` inside the commit rather than read straight from it: a press
+ * that never became a click leaves the pending path set, and consuming that directly meant the
+ * next unrelated re-render opened a field nobody asked for.
+ *
+ * Carrying the beat as well as the path is what stops it landing on the WRONG one. A path is
+ * just a string, and another slide has a `subtitle` too — measured, a replacement that was not
+ * the emitted beat spent the intent all the same. `shallowRef`, because a `ref` would wrap the
+ * beat in a proxy and the identity comparison would never match.
+ */
+const carried = shallowRef<{ path: string; beat: EditableBeat } | null>(null);
+
+/** Only the primary button opens a field. A right-click is a context menu, not an edit. */
+const PRIMARY_BUTTON = 0;
+
+const noteIntent = (event: MouseEvent) => {
+  // Only while something IS being edited. The intent exists because this press will commit that
+  // edit and rebuild the fragment out from under its own click; with nothing being edited there
+  // is no commit, no rebuild, and the click lands by itself. Recorded regardless, a press that
+  // never became a click sat there and the next keyboard-started commit spent it.
+  if (!editing_element.value || event.button !== PRIMARY_BUTTON) return;
+  pending_path.value = editableTarget(event)?.getAttribute("data-mulmo-path") ?? null;
 };
 
 const beginEdit = (event: MouseEvent) => {
   if (!editing.value) return;
+  // The click arrived, so nothing needs carrying over. Left set, it would open an editor on
+  // the next unrelated re-render.
+  pending_path.value = null;
   const target = editableTarget(event);
   // The click already places the caret; focusing again would move it to the start.
   if (target) startEditing(target, false);
+};
+
+/** Open the marker a click was heading for when the fragment was rebuilt out from under it. */
+/** The intent belongs to this render only if this render is of the beat it was made for. */
+const intentForThisRender = (): { path: string; beat: EditableBeat } | null => {
+  const intent = carried.value;
+  carried.value = null;
+  // `toRaw`, because the beat the commit built is a plain object and the one a host hands back
+  // through a `ref` is a reactive proxy of it — comparing those directly never matches.
+  return intent && intent.beat === toRaw(props.beat) ? intent : null;
+};
+
+const openPendingMarker = () => {
+  // A rebuild invalidates a press that has not become a click yet: whatever it was aimed at is
+  // gone. Left alive, a LATER commit would carry it and open that field — measured.
+  pending_path.value = null;
+  const intent = intentForThisRender();
+  if (!intent || !editing.value) return;
+  const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${intent.path}"]`);
+  if (marker) startEditing(marker, true);
 };
 
 /**
@@ -206,6 +286,13 @@ const endEditing = (target: HTMLElement) => {
   stopWatchingSelection();
 };
 
+/** Hand a pending press over to the render the write is about to cause, if there is one. */
+const carryIntent = (next: EditableBeat | null) => {
+  const intent = pending_path.value;
+  pending_path.value = null;
+  carried.value = next && intent ? { path: intent, beat: next } : null;
+};
+
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
@@ -218,6 +305,9 @@ const commit = (event: FocusEvent) => {
   // into the replacement. Comparing the beat catches both, so it is the only net here; two
   // where either suffices means neither can be break-checked.
   if (editing_beat.value !== props.beat) {
+    // Nothing is written, so nothing is carried — and the press that is still pending belonged
+    // to the session being refused.
+    carryIntent(null);
     endEditing(target);
     return;
   }
@@ -225,6 +315,7 @@ const commit = (event: FocusEvent) => {
   const html = target.innerHTML;
   endEditing(target);
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
+  carryIntent(next);
   if (next) emit("update", next);
 };
 
@@ -243,6 +334,9 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   } else if (event.key === "Escape") {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
+    // Escape abandons the whole interaction, including a press on another marker that has not
+    // become a click. Left set, the next commit anywhere would carry it and open that field.
+    pending_path.value = null;
     endEditing(target);
     target.blur();
   }
@@ -279,6 +373,7 @@ watch(
     // left the toolbar floating over content it could no longer format, and the listener attached.
     stopWatchingSelection();
     void draw().catch(() => {});
+    openPendingMarker();
   },
   { flush: "post" },
 );
@@ -304,6 +399,7 @@ onBeforeUnmount(() => {
       v-if="fragment"
       ref="host"
       :class="['beat-fragment', editing ? 'beat-fragment--editable' : '']"
+      @mousedown="noteIntent"
       @click="beginEdit"
       @keydown="onKeydown"
       v-html="html"
