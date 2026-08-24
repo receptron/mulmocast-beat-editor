@@ -54,9 +54,6 @@ const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
 
-/** The whole beat, fragment and toolbar. Focus moving inside it is not the end of an edit. */
-const shell = ref<HTMLElement | null>(null);
-
 /** The element being edited, remembered because a commit can be triggered from the toolbar. */
 const editing_element = ref<HTMLElement | null>(null);
 
@@ -154,13 +151,24 @@ const beginEdit = (event: MouseEvent) => {
  * is the single place an edit lands — and `applyInlineEdit` answers null when nothing changed,
  * which is what stops an ordinary click-away from rebuilding the fragment.
  */
+/** Focus landing on this beat's toolbar, or coming back from it to the element being edited. */
+const staysWithinThisEdit = (related: EventTarget | null): boolean => {
+  if (!(related instanceof Element)) return false;
+  // `contains` rather than identity: a descendant of the edited element is still inside it.
+  return related.closest('[role="toolbar"]') !== null || (editing_element.value?.contains(related) ?? false);
+};
+
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
-  // Focus moving WITHIN the beat is not the end of an edit. Tabbing into the toolbar would
-  // otherwise commit and unmount it before a keyboard user could press anything — the buttons
-  // are focusable and the element says `role="toolbar"`, so that was a promise it did not keep.
-  if (event.relatedTarget instanceof Node && shell.value?.contains(event.relatedTarget)) return;
+  // Only a hop between the text and its own toolbar is not the end of an edit. Tabbing into the
+  // toolbar must not commit, or the toolbar unmounts before a keyboard user can press anything;
+  // and an action bounces focus text -> button, which must not commit either.
+  //
+  // "anywhere inside the beat" is too wide, and losing that distinction LOSES DATA: measured,
+  // editing the title and then clicking the subtitle of the same beat left both elements
+  // editable and committed only the second, dropping the title's edit silently.
+  if (staysWithinThisEdit(event.relatedTarget)) return;
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
   target.removeAttribute("contenteditable");
@@ -236,7 +244,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div ref="shell" @focusout="commit">
+  <div @focusout="commit">
     <component :is="'style'" v-if="fragment?.css">{{ fragment.css }}</component>
     <!--
       The fragment is sanitized above. `beatToHtml` documents that raw HTML, event handlers

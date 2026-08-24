@@ -203,3 +203,9 @@ export const tabTo = (view: MountedBeat, next: HTMLElement): void => {
   }
   from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: next }));
 };
+
+/** Move focus from the edited element to another marker, the way clicking a sibling does. */
+export const focusOutTo = (view: MountedBeat, path: string): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
+};

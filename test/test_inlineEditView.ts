@@ -16,6 +16,7 @@ import {
   toolbarOf,
   toolbarButtons,
   tabTo,
+  focusOutTo,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -360,4 +361,20 @@ test("tabbing into the toolbar does not end the edit", async () => {
   assert.equal(stillEditing, true, "the element is still being edited");
   assert.equal(stillShowing, true, "and the toolbar is still there to press");
   assert.equal(emitted, 0, "nothing was committed");
+});
+
+test("moving to another marker in the same beat commits the first edit", async () => {
+  // The keyboard fix widened the commit guard to "anywhere inside the beat", and that LOST
+  // DATA: both elements stayed editable and only the second committed. Only a hop between the
+  // text and its own toolbar may skip the commit.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "T-EDITED");
+  focusOutTo(view, "subtitle");
+  await settle();
+  const emitted = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  const stillEditable = view.host.querySelectorAll('[contenteditable="true"]').length;
+  view.unmount();
+  assert.equal(emitted?.image.slide.title, "T-EDITED", "the first edit is not dropped");
+  assert.equal(stillEditable, 0, "and the first element stops being editable");
 });
