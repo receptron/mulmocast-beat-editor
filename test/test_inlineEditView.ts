@@ -11,7 +11,11 @@ import {
   reachability,
   graftMarker,
   blurAsIfEditing,
+  selectWithin,
+  settle,
+  toolbarOf,
 } from "./support/beatViewHarness";
+import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
 
 /**
@@ -253,4 +257,44 @@ test("Escape mid-conversion abandons the candidate, not the edit", async () => {
   pressWhileComposing(view, "title", "Escape");
   assert.equal(view.host.querySelector('[data-mulmo-path="title"]')?.getAttribute("contenteditable"), "true");
   view.unmount();
+});
+
+test("the formatting toolbar appears for a selection inside the beat being edited", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  await settle();
+  assert.equal(toolbarOf(view), null, "nothing to format until something is selected");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "a selection inside the edited beat shows it");
+
+  // And editing ends with the document as it was found. A listener left behind is invisible
+  // until something else goes wrong, so it is asserted rather than assumed.
+  blurActive(view);
+  await settle();
+  assert.equal(toolbarOf(view), null, "committing puts the toolbar away");
+  assert.equal(documentListenerCount("selectionchange"), 0, "and detaches the listener");
+  view.unmount();
+});
+
+test("a read-only beat never shows the toolbar, however you select in it", async () => {
+  const view = await mountBeatView(slide(), { editable: false });
+  selectWithin(view, "title");
+  await settle();
+  const shown = toolbarOf(view);
+  view.unmount();
+  assert.equal(shown, null);
+});
+
+test("unmounting mid-edit leaves no selection listener behind", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "the toolbar is up before unmounting");
+  // Unmounting removes the component's DOM either way, so a toolbar count proves nothing here.
+  // The leak is the listener itself: it would keep running against an unmounted instance.
+  assert.equal(documentListenerCount("selectionchange"), 1, "editing attaches exactly one");
+  view.unmount();
+  assert.equal(documentListenerCount("selectionchange"), 0, "and unmounting takes it away");
 });

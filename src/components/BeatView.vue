@@ -6,6 +6,9 @@ import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
 import { applyInlineEdit, isInlineEditable, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { BOLD, EMPHASIS, clearFormat, colorFormat, formattableSelection, toggleFormat, type AccentColor, type InlineFormat } from "../inlineFormat";
+import { placeToolbar } from "../toolbarPosition";
+import InlineToolbar from "./InlineToolbar.vue";
 
 /**
  * One beat, rendered as a div.
@@ -73,10 +76,50 @@ const editableTarget = (event: Event): HTMLElement | null => {
  */
 const htmlBeforeEdit = ref("");
 
+/**
+ * Where the formatting toolbar sits, or null when there is nothing to format.
+ *
+ * Driven by `selectionchange`, which is a document-level event: the listener is attached only
+ * while this beat has something being edited, so a list of twenty beats does not run twenty
+ * handlers for every caret move.
+ */
+const toolbar = ref<{ x: number; y: number } | null>(null);
+
+/** Sized to what the toolbar renders: two buttons, seven swatches, a clear, and two rules. */
+const TOOLBAR_BOX = { width: 268, height: 34 };
+
+const repositionToolbar = () => {
+  const found = formattableSelection(document.getSelection());
+  if (!found) {
+    toolbar.value = null;
+    return;
+  }
+  const rect = found.range.getBoundingClientRect();
+  toolbar.value = placeToolbar(rect, TOOLBAR_BOX, { width: window.innerWidth, height: window.innerHeight });
+};
+
+const startWatchingSelection = () => document.addEventListener("selectionchange", repositionToolbar);
+
+const stopWatchingSelection = () => {
+  document.removeEventListener("selectionchange", repositionToolbar);
+  toolbar.value = null;
+};
+
+const applyFormat = (format: InlineFormat) => {
+  if (toggleFormat(document.getSelection(), format)) repositionToolbar();
+};
+
+const applyColor = (color: AccentColor) => applyFormat(colorFormat(color));
+
+const applyClear = () => {
+  if (clearFormat(document.getSelection())) repositionToolbar();
+};
+
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
   target.setAttribute("contenteditable", "true");
+  startWatchingSelection();
   if (focusIt || document.activeElement !== target) target.focus();
 };
 
@@ -98,6 +141,7 @@ const commit = (event: FocusEvent) => {
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
   target.removeAttribute("contenteditable");
+  stopWatchingSelection();
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);
 };
@@ -118,6 +162,7 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
     target.removeAttribute("contenteditable");
+    stopWatchingSelection();
     target.blur();
   }
 };
@@ -147,7 +192,12 @@ onMounted(() => {
 });
 watch(html, () => void draw().catch(() => {}), { flush: "post" });
 
-onBeforeUnmount(() => releaseRuntimes(host.value));
+onBeforeUnmount(() => {
+  releaseRuntimes(host.value);
+  // The selection listener is on the document, so unmounting mid-edit would otherwise leave a
+  // handler holding this component alive and repositioning a toolbar nobody can see.
+  stopWatchingSelection();
+});
 </script>
 
 <template>
@@ -170,5 +220,14 @@ onBeforeUnmount(() => releaseRuntimes(host.value));
     ></div>
     <!-- eslint-enable vue/no-v-html -->
     <p v-else class="rounded border border-dashed border-stone-300 p-3 text-xs text-stone-400">nothing to preview yet</p>
+    <InlineToolbar
+      v-if="toolbar"
+      :x="toolbar.x"
+      :y="toolbar.y"
+      @bold="applyFormat(BOLD)"
+      @emphasis="applyFormat(EMPHASIS)"
+      @color="applyColor"
+      @clear="applyClear"
+    />
   </div>
 </template>

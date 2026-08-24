@@ -9,11 +9,16 @@ import type { EditableBeat } from "../../src/beatHelpers";
  * Reuses the bundle and jsdom window the editor harness already builds — a second `vite` build
  * per run buys nothing, and a second jsdom would give Vue a document it did not capture at load.
  *
- * KNOWN BLIND SPOT: mounted this way, BeatView's `ref="host"` lands on a vnode Vue treats as
- * hoisted and `host.value` stays null, so anything reached through it — `driveRuntimes`, which
- * draws chart.js and mermaid — does nothing here. That is the harness, not the component: the
- * production build draws them (measured, 2 canvases at real size and 2 mermaid SVGs in
- * `yarn build` + `vite preview`). Nothing in these tests may depend on that ref.
+ * This used to carry a blind spot around `ref="host"`, reported by Vue as "Missing ref owner
+ * context. ref cannot be used on hoisted vnodes". The cause was the harness bundling its own
+ * copy of Vue: the components ran on one reactivity system and the test's `import("vue")`
+ * created the render effect on another. Externalising vue in `editorHarness.ts` fixed it — the
+ * warning is gone and a ref written by a DOM listener now re-renders, which is what let the
+ * formatting toolbar be tested at all.
+ *
+ * What jsdom still cannot show is DRAWING: chart.js and mermaid need a real 2d context, so a
+ * chart beat renders its `<canvas>` and nothing is painted into it. Assert structure here and
+ * measure the picture in a browser.
  */
 export type MountedBeat = {
   host: HTMLElement;
@@ -138,3 +143,21 @@ export const mountBeatList = async (beats: EditableBeat[]): Promise<MountedBeat>
   const { mountPoint, unmount } = await mount("BeatListEditor", { beats, "onUpdate:beats": (next: unknown) => emitted.push(next) });
   return { host: mountPoint, emitted, unmount };
 };
+
+/** Select the whole text of the marker at `path`, the way a double-click would. */
+export const selectWithin = (view: MountedBeat, path: string): void => {
+  const element = at(view, path);
+  const selection = dom.window.getSelection();
+  if (!selection) throw new Error("jsdom gave no Selection");
+  const range = dom.window.document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  dom.window.document.dispatchEvent(new dom.window.Event("selectionchange"));
+};
+
+/** Let Vue flush. A ref set by a DOM listener renders on a microtask, not synchronously. */
+export const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** The formatting toolbar belonging to THIS mount, if it is showing. */
+export const toolbarOf = (view: MountedBeat): Element | null => view.host.parentElement?.querySelector('[role="toolbar"]') ?? null;
