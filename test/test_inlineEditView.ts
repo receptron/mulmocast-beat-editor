@@ -267,14 +267,22 @@ test("the formatting toolbar appears for a selection inside the beat being edite
   selectWithin(view, "title");
   await settle();
   assert.ok(toolbarOf(view), "a selection inside the edited beat shows it");
+  view.unmount();
+});
 
-  // And editing ends with the document as it was found. A listener left behind is invisible
-  // until something else goes wrong, so it is asserted rather than assumed.
+test("committing leaves the document as it was found", async () => {
+  // A listener left behind is invisible until something else goes wrong, so it is asserted.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
   blurActive(view);
   await settle();
-  assert.equal(toolbarOf(view), null, "committing puts the toolbar away");
-  assert.equal(documentListenerCount("selectionchange"), 0, "and detaches the listener");
+  const shown = toolbarOf(view);
+  const listeners = documentListenerCount("selectionchange");
   view.unmount();
+  assert.equal(shown, null, "committing puts the toolbar away");
+  assert.equal(listeners, 0, "and detaches the listener");
 });
 
 test("a read-only beat never shows the toolbar, however you select in it", async () => {
@@ -297,4 +305,25 @@ test("unmounting mid-edit leaves no selection listener behind", async () => {
   assert.equal(documentListenerCount("selectionchange"), 1, "editing attaches exactly one");
   view.unmount();
   assert.equal(documentListenerCount("selectionchange"), 0, "and unmounting takes it away");
+});
+
+test("a beat replaced mid-edit takes the toolbar and the listener with it", async () => {
+  // No focusout fires for an element that was removed rather than blurred, so nothing else
+  // tears this down. Measured before the fix: the toolbar stayed up over a fragment that no
+  // longer had anything editable in it.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "the toolbar is up while editing");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced" } } });
+  await settle();
+  await settle();
+  const stillShowing = view.host.parentElement?.querySelectorAll('[role="toolbar"]').length ?? 0;
+  const listeners = documentListenerCount("selectionchange");
+  view.unmount();
+  assert.equal(stillShowing, 0, "the toolbar goes with the fragment");
+  assert.equal(listeners, 0, "and so does the listener");
 });

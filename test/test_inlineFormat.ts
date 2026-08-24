@@ -157,3 +157,37 @@ test("a selection inside a leaf that is not being edited is refused", () => {
   selection.addRange(range);
   assert.equal(toggleFormat(selection, BOLD), false, "no contenteditable, no formatting");
 });
+
+/**
+ * The shapes where `tidyEditable`'s cost is its own algorithm rather than jsdom's DOM.
+ *
+ * Deep same-kind nesting is deliberately absent: at depth 400 jsdom spends 714 of 719ms inside
+ * `insertBefore`/`removeChild`, while Chromium unwraps 2000 levels in 31ms. Budgeting that here
+ * would measure jsdom.
+ */
+const TIDY_SHAPES: [string, string][] = [
+  ["adjacent siblings", "<strong>a</strong>".repeat(2000)],
+  ["empty wrappers", "<strong></strong>".repeat(4000)],
+  ["alternating colours", '<span class="text-d-primary">a</span><span class="text-d-danger">b</span>'.repeat(1000)],
+  ["nested and adjacent", "<em><em>a</em></em><em>b</em>".repeat(600)],
+];
+
+test("tidyEditable is not super-linear on the shapes a paste can produce", () => {
+  // Re-querying the whole subtree after every change is what this catches. Measured: with the
+  // search-and-restart version, "adjacent siblings" alone took 4382ms and "nested and adjacent"
+  // 3291ms, against 33ms and 26ms for the single-pass one. 2000 bold runs in a title is not a
+  // thing a person types, and it is a thing a paste can carry.
+  const dom = new JSDOM("<!doctype html><body></body>");
+  Object.assign(globalThis, { Node: dom.window.Node, NodeFilter: dom.window.NodeFilter });
+
+  const started = performance.now();
+  TIDY_SHAPES.forEach(([, html]) => {
+    const holder = dom.window.document.createElement("p");
+    holder.setAttribute("data-mulmo-path", "t");
+    holder.innerHTML = html;
+    tidyEditable(holder);
+  });
+  const elapsed = performance.now() - started;
+
+  assert.ok(elapsed < 500, `tidyEditable took ${Math.round(elapsed)}ms over ${TIDY_SHAPES.length} shapes (healthy is under 100ms); the quadratic pass is back`);
+});

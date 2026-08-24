@@ -67,26 +67,29 @@ export const tidyEditable = (root: HTMLElement): void => {
   root.normalize();
 };
 
+/**
+ * One pass, not a search-and-restart per element.
+ *
+ * Re-querying the whole subtree after every change is quadratic, and it is reachable: 2000
+ * adjacent `<strong>a</strong>` — which a paste can produce — took 4.4 SECONDS on the main
+ * thread. Document order means a parent is always visited before its child, so unwrapping as
+ * we go needs no second look.
+ */
 const collapseNested = (root: HTMLElement): void => {
-  for (;;) {
-    const nested = formattingIn(root).find((element) => {
-      const parent = element.parentElement;
-      return parent !== null && isFormatting(parent) && sameKind(element, parent);
-    });
-    if (!nested) return;
-    unwrapElement(nested);
-  }
+  formattingIn(root).forEach((element) => {
+    const parent = element.parentElement;
+    if (parent && parent !== root && isFormatting(parent) && sameKind(element, parent)) unwrapElement(element);
+  });
 };
 
 const mergeAdjacent = (root: HTMLElement): void => {
-  for (;;) {
-    const pair = formattingIn(root)
-      .map((element) => ({ element, next: element.nextSibling }))
-      .find(({ element, next }) => isElement(next) && sameKind(element, next));
-    if (!pair || !isElement(pair.next)) return;
-    while (pair.next.firstChild) pair.element.appendChild(pair.next.firstChild);
-    pair.next.remove();
-  }
+  formattingIn(root).forEach((element) => {
+    if (!element.isConnected) return;
+    for (let next = element.nextSibling; isElement(next) && sameKind(element, next); next = element.nextSibling) {
+      while (next.firstChild) element.appendChild(next.firstChild);
+      next.remove();
+    }
+  });
 };
 
 /** The nearest ancestor within `root` that is already this format, if the selection is inside one. */

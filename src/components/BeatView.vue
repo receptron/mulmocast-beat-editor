@@ -190,7 +190,17 @@ onMounted(() => {
   ensureDocumentStyles();
   void draw().catch(() => {});
 });
-watch(html, () => void draw().catch(() => {}), { flush: "post" });
+watch(
+  html,
+  () => {
+    // A new fragment means the element being edited was just destroyed, and no focusout fires for
+    // a node that was removed rather than blurred. Measured: a host replacing the beat mid-edit
+    // left the toolbar floating over content it could no longer format, and the listener attached.
+    stopWatchingSelection();
+    void draw().catch(() => {});
+  },
+  { flush: "post" },
+);
 
 onBeforeUnmount(() => {
   releaseRuntimes(host.value);

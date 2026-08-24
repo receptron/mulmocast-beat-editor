@@ -33,12 +33,12 @@ const mountPointIn = (): HTMLElement => {
 };
 
 /** Mount one compiled component with `props`, and hand back the point it was mounted at. */
-const mount = async (name: EditorName, props: Record<string, unknown>): Promise<{ mountPoint: HTMLElement; unmount: () => void }> => {
+const mount = async (name: EditorName, props: () => Record<string, unknown>): Promise<{ mountPoint: HTMLElement; unmount: () => void }> => {
   await vueCanRender;
   const { createApp, h } = await import("vue");
   const components = await compiled;
   const mountPoint = mountPointIn();
-  const app = createApp({ render: () => h(components[name], props) });
+  const app = createApp({ render: () => h(components[name], props()) });
   app.mount(mountPoint);
   return {
     mountPoint,
@@ -51,12 +51,12 @@ const mount = async (name: EditorName, props: Record<string, unknown>): Promise<
 
 export const mountBeatView = async (beat: EditableBeat, options: { editable: boolean }): Promise<MountedBeat> => {
   const emitted: unknown[] = [];
-  const { mountPoint, unmount } = await mount("BeatView", {
+  const { mountPoint, unmount } = await mount("BeatView", () => ({
     beat,
     idPrefix: "probe",
     editable: options.editable,
     onUpdate: (next: unknown) => emitted.push(next),
-  });
+  }));
   const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
   if (!host) throw new Error("BeatView rendered no fragment — the beat did not render at all");
   return { host, emitted, unmount };
@@ -140,7 +140,7 @@ export const blurAsIfEditing = (view: MountedBeat, path: string, html: string): 
 /** Mount the whole list editor, to see a beats array the way a host would hand one over. */
 export const mountBeatList = async (beats: EditableBeat[]): Promise<MountedBeat> => {
   const emitted: unknown[] = [];
-  const { mountPoint, unmount } = await mount("BeatListEditor", { beats, "onUpdate:beats": (next: unknown) => emitted.push(next) });
+  const { mountPoint, unmount } = await mount("BeatListEditor", () => ({ beats, "onUpdate:beats": (next: unknown) => emitted.push(next) }));
   return { host: mountPoint, emitted, unmount };
 };
 
@@ -161,3 +161,20 @@ export const settle = (): Promise<void> => new Promise((resolve) => setTimeout(r
 
 /** The formatting toolbar belonging to THIS mount, if it is showing. */
 export const toolbarOf = (view: MountedBeat): Element | null => view.host.parentElement?.querySelector('[role="toolbar"]') ?? null;
+
+export type ReactiveBeat = MountedBeat & { replaceBeat: (next: EditableBeat) => void };
+
+/** Mount a BeatView whose `beat` prop can be changed afterwards, the way a host would. */
+export const mountBeatViewReactive = async (beat: EditableBeat): Promise<ReactiveBeat> => {
+  const { ref } = await import("vue");
+  const emitted: unknown[] = [];
+  const current = ref<EditableBeat>(beat);
+  const props = () => ({ beat: current.value, idPrefix: "probe", editable: true, onUpdate: (next: unknown) => emitted.push(next) });
+  const { mountPoint, unmount } = await mount("BeatView", props);
+  const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
+  if (!host) throw new Error("BeatView rendered no fragment");
+  const replaceBeat = (next: EditableBeat) => {
+    current.value = next;
+  };
+  return { host, emitted, unmount, replaceBeat };
+};
