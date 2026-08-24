@@ -112,7 +112,7 @@ const move = (index: number, delta: number) => {
             </button>
           </span>
         </header>
-        <BeatView :beat="beat" :id-prefix="`beat-${index}`" />
+        <BeatView :beat="beat" :id-prefix="`beat-${index}`" editable @update="update(index, $event)" />
       </div>
 
       <div class="mx-auto flex max-w-2xl items-center gap-2 text-xs">

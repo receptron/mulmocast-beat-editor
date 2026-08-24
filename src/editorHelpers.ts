@@ -300,8 +300,25 @@ const stripTagsOnce = (input: string): string => {
  */
 export const htmlToMarkup = (html: string): string => {
   let s = html;
+  // A <br> alone inside a block is the browser's placeholder for an empty line, not a break in
+  // addition to one. Dropping it first stops it being counted twice: pasting "one\n\nthree"
+  // gives `<div>one</div><div><br></div><div>three</div>`, which rendered as three breaks.
+  s = s.replace(/<(div|p|li|h[1-6]|blockquote|section|article)\b[^<>]*>\s*<br\s*\/?>\s*<\/\1>/gi, "<$1></$1>");
+
   // <br> → newline (does not contain children, do first).
   s = s.replace(/<br\s*\/?>/gi, "\n");
+
+  // A closing block tag is a line boundary and a closing cell is a word boundary. Chromium gives
+  // one <div> per line for a multi-line paste and keeps real <td>s for a pasted table; stripping
+  // those as if they were inline glues the text together — measured, three pasted lines arrived
+  // as "line oneline twoline three" and a two-cell row as "alphabeta".
+  //
+  // The lookahead skips a separator that would only ever be trailing: the last </li> before its
+  // </ul>, the last </td> before its </tr>. Nothing follows those but the wrapper's own close —
+  // which is also why cells run first: once </tr> is a newline, the last </td> stops looking last.
+  const NOT_BEFORE_A_CLOSING_TAG = String.raw`(?=(?!<\/)[\s\S])`;
+  s = s.replace(new RegExp(String.raw`<\/(?:td|th)>` + NOT_BEFORE_A_CLOSING_TAG, "gi"), " ");
+  s = s.replace(new RegExp(String.raw`<\/(?:div|p|h[1-6]|li|tr|blockquote|section|article)>` + NOT_BEFORE_A_CLOSING_TAG, "gi"), "\n");
 
   // Inline tags: replace innermost first. Iterate until no rule matches.
   // Every character class below excludes `<`, and that is the rule rather than a detail: a class
