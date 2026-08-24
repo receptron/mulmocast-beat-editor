@@ -199,7 +199,9 @@ import "@mulmocast/beat-editor/style.css";   // required — see below
 <BeatListEditor :beats="beats" @update:beats="beats = $event" />
 ```
 
-`BeatView` renders one beat read-only; `BeatListEditor` is the list plus the editing pane.
+`BeatView` renders one beat, and with `editable` it also takes inline text edits, the formatting
+toolbar, and drag-to-reorder of the slide's list items; `BeatListEditor` is the list plus the
+editing pane.
 
 ### The stylesheet is not optional
 

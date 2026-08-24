@@ -254,3 +254,149 @@ export const pressDownOn = (view: MountedBeat, path: string): void => {
 export const rightPressOn = (view: MountedBeat, path: string): void => {
   at(view, path).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, button: 2 }));
 };
+
+const itemAt = (view: MountedBeat, path: string): HTMLElement => {
+  const element = view.host.querySelector<HTMLElement>(`[data-mulmo-item-path="${path}"]`);
+  if (!element) throw new Error(`no element carries data-mulmo-item-path="${path}"`);
+  return element;
+};
+
+/** The item paths the render put on screen, in document order. */
+export const itemPaths = (view: MountedBeat): string[] =>
+  [...view.host.querySelectorAll("[data-mulmo-item-path]")].map((element) => element.getAttribute("data-mulmo-item-path") ?? "");
+
+/**
+ * Drag the item at `fromPath` onto the one at `toPath`.
+ *
+ * NOT a real drag: jsdom implements neither `DragEvent` nor `DataTransfer`, so these are plain
+ * bubbling events and nothing here exercises `setData`, `effectAllowed`, or `dropEffect` — the
+ * three lines that decide whether Firefox starts the drag at all. Those are checked by dragging
+ * in a real browser; see the PR. What this does cover is the targeting, the permit list, the
+ * emitted beat, and that a rejected drop stays rejected.
+ */
+export const dragItemOnto = (view: MountedBeat, fromPath: string, toPath: string): void => {
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  const target = itemAt(view, toPath);
+  target.dispatchEvent(new dom.window.Event("dragover", { bubbles: true, cancelable: true }));
+  target.dispatchEvent(new dom.window.Event("drop", { bubbles: true, cancelable: true }));
+};
+
+/** Start a drag and let go of it without dropping, the way Escape or a drop outside would. */
+export const dragItemAndAbandon = (view: MountedBeat, fromPath: string): void => {
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  itemAt(view, fromPath).dispatchEvent(new dom.window.Event("dragend", { bubbles: true }));
+};
+
+/** Whether `dragover` was accepted — the only signal that a drop would be allowed here. */
+export const dragOverAccepted = (view: MountedBeat, fromPath: string, toPath: string): boolean => {
+  const source = itemAt(view, fromPath);
+  source.dispatchEvent(new dom.window.Event("dragstart", { bubbles: true }));
+  const event = new dom.window.Event("dragover", { bubbles: true, cancelable: true });
+  itemAt(view, toPath).dispatchEvent(event);
+  // Balanced: without this the drag stays latched on the component and the next verb inherits it.
+  source.dispatchEvent(new dom.window.Event("dragend", { bubbles: true }));
+  return event.defaultPrevented;
+};
+
+/** Drop on an item with no drag in flight — what a stray event, or one from elsewhere, looks like. */
+export const dropOn = (view: MountedBeat, path: string): void => {
+  itemAt(view, path).dispatchEvent(new dom.window.Event("drop", { bubbles: true, cancelable: true }));
+};
+
+/** An item marker the render never emitted, so its path is valid data but was not offered. */
+export const graftItemMarker = (view: MountedBeat, path: string): HTMLElement => {
+  const element = dom.window.document.createElement("div");
+  element.setAttribute("data-mulmo-item-path", path);
+  element.textContent = "grafted";
+  view.host.appendChild(element);
+  return element;
+};
+
+/**
+ * Dispatch a dragstart from `element` and answer whether the component took it as an item drag.
+ *
+ * `overPath` must name a DIFFERENT item from the one the drag would resolve to: a drop onto the
+ * source's own index is refused whatever the source was, so hovering it cannot tell "the drag was
+ * refused" apart from "the drag was accepted and this target is invalid".
+ */
+export const dragStartFrom = (view: MountedBeat, element: Element, overPath: string): boolean => {
+  const event = new dom.window.Event("dragstart", { bubbles: true, cancelable: true });
+  element.dispatchEvent(event);
+  // A cancelled dragstart is the component refusing to carry anything.
+  if (event.defaultPrevented) return false;
+  // Otherwise the only observable the drag left is whether a dragover is now honoured.
+  const over = new dom.window.Event("dragover", { bubbles: true, cancelable: true });
+  itemAt(view, overPath).dispatchEvent(over);
+  element.dispatchEvent(new dom.window.Event("dragend", { bubbles: true }));
+  return over.defaultPrevented;
+};
+
+/** Put a child inside a marked item — deck renders `<img>` and `<a>` in cards this way. */
+export const childOfItem = (view: MountedBeat, path: string, tag: string): HTMLElement => {
+  const child = dom.window.document.createElement(tag);
+  itemAt(view, path).appendChild(child);
+  return child;
+};
+
+/** Leave a non-collapsed selection in the document, the way dragging across words does. */
+export const selectTextIn = (view: MountedBeat, path: string): void => {
+  const element = itemAt(view, path);
+  const range = dom.window.document.createRange();
+  range.selectNodeContents(element);
+  const selection = dom.window.getSelection();
+  selection?.removeAllRanges();
+  selection?.addRange(range);
+};
+
+export const clearSelection = (): void => {
+  dom.window.getSelection()?.removeAllRanges();
+};
+
+/**
+ * Give the fragment a layout for as long as the returned restore is not called.
+ *
+ * jsdom reports every rect as zero, which makes the whole animation a no-op that cannot be told
+ * apart from one that never ran. Patched on the PROTOTYPE rather than per element: `v-html`
+ * replaces the whole subtree on the render the FLIP is measured across, so the elements it
+ * measures do not exist yet when a test could reach them.
+ */
+const rectAt = (left: number, top: number): DOMRect => ({ top, left, right: left, bottom: top, width: 0, height: 0, x: left, y: top, toJSON: () => ({}) });
+
+/** The row a marked item occupies, or null for anything that is not one. */
+const rowOf = (element: Element): number | null => {
+  const path = element.getAttribute("data-mulmo-item-path");
+  if (path === null) return null;
+  const index = /\[(\d+)\]$/.exec(path)?.[1];
+  return index === undefined ? null : Number(index);
+};
+
+export const withItemLayout = (gap: number): (() => void) => {
+  const proto = dom.window.Element.prototype;
+  const original = proto.getBoundingClientRect.bind(proto);
+  proto.getBoundingClientRect = function measured(this: Element): DOMRect {
+    const row = rowOf(this);
+    return row === null ? rectAt(0, 0) : rectAt(0, row * gap);
+  };
+  return () => {
+    proto.getBoundingClientRect = original;
+  };
+};
+
+/** What `style.transform` was set to on each item, in order, keyed by path. */
+export const recordItemTransforms = (view: MountedBeat): Map<string, string[]> => {
+  const written = new Map<string, string[]>();
+  view.host.querySelectorAll<HTMLElement>("[data-mulmo-item-path]").forEach((element) => {
+    const log: string[] = [];
+    written.set(element.getAttribute("data-mulmo-item-path") ?? "", log);
+    let held = "";
+    Object.defineProperty(element.style, "transform", {
+      configurable: true,
+      get: () => held,
+      set: (value: string) => {
+        held = value;
+        log.push(value);
+      },
+    });
+  });
+  return written;
+};

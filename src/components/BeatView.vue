@@ -4,8 +4,10 @@ import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/bro
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
+import { splitItemPath } from "../editorHelpers";
 import { ensureDocumentStyles } from "../documentStyles";
-import { applyInlineEdit, isInlineEditable, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { applyInlineEdit, applyItemMove, isInlineEditable, sameItemList, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { captureItemRects, playItemFlip, type Displacement, type ItemRects } from "../flip";
 import { BOLD, EMPHASIS, clearFormat, colorFormat, formattableSelection, toggleFormat, type AccentColor, type InlineFormat } from "../inlineFormat";
 import { placeToolbar } from "../toolbarPosition";
 import InlineToolbar from "./InlineToolbar.vue";
@@ -49,7 +51,9 @@ const NO_PATHS: ReadonlySet<string> = new Set();
 
 const sanitized = computed(() => (fragment.value ? sanitizeFragment(fragment.value.html) : ""));
 
-const surface = computed<EditingSurface>(() => (editing.value ? withEditingAffordances(sanitized.value) : { html: sanitized.value, paths: NO_PATHS }));
+const surface = computed<EditingSurface>(() =>
+  editing.value ? withEditingAffordances(sanitized.value) : { html: sanitized.value, paths: NO_PATHS, items: NO_PATHS },
+);
 const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
@@ -79,6 +83,125 @@ const editableTarget = (event: Event): HTMLElement | null => {
   const from = event.target;
   const marker = from instanceof Element ? from.closest<HTMLElement>("[data-mulmo-path]") : null;
   return marker && surface.value.paths.has(marker.getAttribute("data-mulmo-path") ?? "") ? marker : null;
+};
+
+/**
+ * The item a drag is carrying, with the beat it was picked up from.
+ *
+ * The beat travels with it because `dragend` cannot always fire: `v-html` detaches the source
+ * element mid-drag, and `BeatListEditor` keys its rows by index, so one BeatView instance is
+ * reused across beats. Without the identity a latched path reorders a beat the drag never
+ * started on.
+ */
+const dragging = shallowRef<{ path: string; beat: EditableBeat } | null>(null);
+
+const draggingPath = (): string | null => {
+  const held = dragging.value;
+  return held && held.beat === toRaw(props.beat) ? held.path : null;
+};
+
+/**
+ * Every marked ancestor of `target`, innermost first.
+ *
+ * Item paths nest — deck puts `columns[0]` around `columns[0].content[0].items[0]` — so the
+ * innermost marker is usually the wrong one for a card-level drag.
+ */
+const markedAncestors = (target: Element): string[] => {
+  const paths: string[] = [];
+  for (
+    let element = target.closest<HTMLElement>("[data-mulmo-item-path]");
+    element;
+    element = element.parentElement?.closest<HTMLElement>("[data-mulmo-item-path]") ?? null
+  ) {
+    paths.push(element.getAttribute("data-mulmo-item-path") ?? "");
+  }
+  return paths;
+};
+
+/** The marked item a drop is aimed at: the innermost ancestor sharing the drag's array. */
+const dropTarget = (event: DragEvent): string | null => {
+  const from = draggingPath();
+  if (!from || !(event.target instanceof Element)) return null;
+  // Measured: grabbing a card anywhere over its own bullets resolved to the bullet — a different
+  // array — and the drop was refused, leaving only the card's padding strip usable.
+  return markedAncestors(event.target).find((path) => surface.value.items.has(path) && sameItemList(from, path)) ?? null;
+};
+
+/** Deck's own markup carries natively-draggable elements, and this must not be one of them. */
+const dragSource = (event: DragEvent): string | null => {
+  if (!(event.target instanceof Element) || !event.target.matches("[data-mulmo-item-path]")) return null;
+  const path = event.target.getAttribute("data-mulmo-item-path") ?? "";
+  return surface.value.items.has(path) ? path : null;
+};
+
+const startItemDrag = (event: DragEvent) => {
+  // A drag that begins on a text selection is the user selecting, not reordering. Firefox and
+  // WebKit start an item drag from it; the refused drop then splices the transfer payload into
+  // the text, which the blur commits. Cancelling here also stops that drop from ever arriving.
+  if (editing_element.value || document.getSelection()?.isCollapsed === false) {
+    event.preventDefault();
+    return;
+  }
+  // Walking up from the target would make an `<img>` or `<a>` inside a card the drag source —
+  // both are draggable by default and win over a `draggable="true"` ancestor. Measured in
+  // Chromium and Firefox: dragging a picture out of a card reordered the list instead.
+  const path = dragSource(event);
+  if (!path) return;
+  dragging.value = { path, beat: toRaw(props.beat) };
+  // A private type rather than text/plain: a drop outside the host types whatever is on the
+  // plain-text flavour into the field under the cursor — measured, an <input> came away holding
+  // `items[0]`. Firefox starts no drag at all unless something is set, hence the empty string.
+  event.dataTransfer?.setData("application/x-mulmo-item", path);
+  event.dataTransfer?.setData("text/plain", "");
+  if (event.dataTransfer) event.dataTransfer.effectAllowed = "move";
+};
+
+const overItem = (event: DragEvent) => {
+  if (!dropTarget(event)) return;
+  // The default action is "reject the drop", so a drop handler is never reached without this.
+  event.preventDefault();
+  if (event.dataTransfer) event.dataTransfer.dropEffect = "move";
+};
+
+/** Set for one render only: the move whose FLIP the next draw has to play, and whose beat. */
+const pending_flip = shallowRef<{ from: string; to: string; rects: ItemRects; beat: EditableBeat } | null>(null);
+
+const dropItem = (event: DragEvent) => {
+  const to = dropTarget(event);
+  const from = draggingPath();
+  dragging.value = null;
+  if (!from) return;
+  // Our drag, so the browser must not also act on it — a refused move would otherwise fall
+  // through to the default handling of whatever is on the transfer.
+  event.preventDefault();
+  if (!to) return;
+  const next = applyItemMove(props.beat, from, to, surface.value.items);
+  if (!next) return;
+  // Measured after the refusal, and scoped to the array being reordered: a columns slide carries
+  // markers the move cannot touch, and forcing their layout buys nothing.
+  const rects = captureItemRects(host.value, splitItemPath(from)?.parent);
+  // The beat the move PRODUCED: the play only belongs to the render that shows it. A host that
+  // ignores the emit never gets there, and must not have stale rectangles fire on a later one.
+  pending_flip.value = { from, to, rects, beat: next };
+  emit("update", next);
+};
+
+const endItemDrag = () => {
+  dragging.value = null;
+};
+
+/**
+ * Play the move the drop recorded, once the new order is on screen.
+ *
+ * Cleared unconditionally, and only played for the beat it was recorded on: a host that ignores
+ * the emit never re-renders, which would otherwise leave the rectangles armed to fire on some
+ * later, unrelated render and jump every item to a stale position.
+ */
+const playPendingFlip = (): Displacement[] => {
+  const flip = pending_flip.value;
+  pending_flip.value = null;
+  if (!flip || flip.beat !== toRaw(props.beat)) return [];
+  return playItemFlip(host.value, flip.rects, flip.from, flip.to);
 };
 
 /**
@@ -372,6 +495,12 @@ watch(
     // a node that was removed rather than blurred. Measured: a host replacing the beat mid-edit
     // left the toolbar floating over content it could no longer format, and the listener attached.
     stopWatchingSelection();
+    // The element the drag started on has just been detached, so its `dragend` will never reach
+    // the host handler.
+    dragging.value = null;
+    // Before `draw()`, which destroys the charts synchronously and only rebuilds them after an
+    // awaited script load: an item holding a chart would otherwise be measured collapsed.
+    playPendingFlip();
     void draw().catch(() => {});
     openPendingMarker();
   },
@@ -402,6 +531,10 @@ onBeforeUnmount(() => {
       @mousedown="noteIntent"
       @click="beginEdit"
       @keydown="onKeydown"
+      @dragstart="startItemDrag"
+      @dragover="overItem"
+      @drop="dropItem"
+      @dragend="endItemDrag"
       v-html="html"
     ></div>
     <!-- eslint-enable vue/no-v-html -->

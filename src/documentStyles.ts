@@ -36,6 +36,9 @@ const INLINE_EDIT = `
 .beat-fragment--editable [data-mulmo-path]:hover { outline: 2px solid rgba(56,189,248,.55); outline-offset: 2px; cursor: text; }
 .beat-fragment [data-mulmo-path][contenteditable="true"] { outline: 2px solid rgba(56,189,248,.9); outline-offset: 2px; box-shadow: 0 0 0 4px rgba(56,189,248,.15); }
 .beat-fragment--editable [data-mulmo-path]:focus-visible { outline: 2px solid rgba(56,189,248,.9); outline-offset: 2px; }
+.beat-fragment--editable [data-mulmo-item-path][draggable="true"] { cursor: grab; }
+.beat-fragment--editable [data-mulmo-item-path][draggable="true"]:active { cursor: grabbing; }
+.beat-fragment--editable [data-mulmo-item-path][draggable="true"] [data-mulmo-path] { cursor: text; }
 `;
 
 /** Append the document-level styles once. Safe to call from every beat. */

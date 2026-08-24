@@ -1,5 +1,5 @@
 import { beatImage, isRecord, withImageField, type EditableBeat } from "./beatHelpers";
-import { getByPath, htmlToMarkup, setByPath } from "./editorHelpers";
+import { getByPath, htmlToMarkup, moveByPath, setByPath, splitItemPath } from "./editorHelpers";
 
 /**
  * Applying an edit made directly on a rendered beat.
@@ -46,8 +46,35 @@ export const applyInlineEdit = (beat: EditableBeat, path: string, html: string, 
   return withImageField(beat, "slide", next);
 };
 
+/**
+ * The beat with the item at `fromPath` moved to where `toPath` sits.
+ *
+ * `offered` is the item permit list, for the same reason the text edit has one: deck marks a
+ * reorderable list item with `data-mulmo-item-path`, and a path outside that set is one nobody
+ * rendered. Both paths must be offered — dropping onto something the renderer did not mark
+ * would move an item to a position that does not exist.
+ *
+ * Returns null when the move cannot be applied, which means "leave the beat alone".
+ */
+export const applyItemMove = (beat: EditableBeat, fromPath: string, toPath: string, offered: ReadonlySet<string>): EditableBeat | null => {
+  if (!offered.has(fromPath) || !offered.has(toPath) || !isInlineEditable(beat)) return null;
+  const slide = beatImage(beat)["slide"];
+  const next = moveByPath(slide, fromPath, toPath);
+  // `moveByPath` answers with the original for a refused move — a different parent array, an
+  // index out of range, or a drop onto the item that was picked up.
+  if (next === slide) return null;
+  return withImageField(beat, "slide", next);
+};
+
+/** Whether two item paths address the same array, which is the only move deck's data allows. */
+export const sameItemList = (a: string, b: string): boolean => {
+  const from = splitItemPath(a);
+  const to = splitItemPath(b);
+  return from !== null && to !== null && from.parent === to.parent && from.index !== to.index;
+};
+
 /** A fragment ready to edit, and the only paths an edit to it may write. */
-export type EditingSurface = { html: string; paths: ReadonlySet<string> };
+export type EditingSurface = { html: string; paths: ReadonlySet<string>; items: ReadonlySet<string> };
 
 /**
  * The sanitized fragment with each editable leaf made keyboard-reachable, and the paths it offers.
@@ -64,12 +91,10 @@ export type EditingSurface = { html: string; paths: ReadonlySet<string> };
  * Rendered rather than applied to the live DOM afterwards, because the content comes from
  * `v-html`: attributes that are part of what Vue renders cannot fall out of step with it.
  */
-export const withEditingAffordances = (html: string): EditingSurface => {
+/** Make each marked leaf keyboard-reachable, and answer with the paths that were marked. */
+const markEditableText = (content: DocumentFragment): Set<string> => {
   const paths = new Set<string>();
-  if (typeof document === "undefined") return { html, paths };
-  const holder = document.createElement("template");
-  holder.innerHTML = html;
-  holder.content.querySelectorAll("[data-mulmo-path]").forEach((element) => {
+  content.querySelectorAll("[data-mulmo-path]").forEach((element) => {
     const path = element.getAttribute("data-mulmo-path") ?? "";
     if (!path) return;
     paths.add(path);
@@ -77,5 +102,45 @@ export const withEditingAffordances = (html: string): EditingSurface => {
     element.setAttribute("role", "textbox");
     element.setAttribute("aria-label", `Edit ${path}`);
   });
-  return { html: holder.innerHTML, paths };
+  return paths;
+};
+
+/**
+ * Make each marked list item draggable, and answer with the item paths that were marked.
+ *
+ * An array with one entry is skipped: a move needs a different index in the same array, so its
+ * only possible target is itself. Marking it would give a drag ghost and a no-drop cursor
+ * everywhere on the page for a reorder that cannot complete — and the default fixtures for
+ * `stats`, `timeline` and `manifesto` are all length one.
+ *
+ * No `aria-label`: there is no keyboard path to reordering yet, and naming the element after a
+ * path expression promises an affordance a screen reader user cannot reach. On `columns` and
+ * `grid` the marker is a plain `<div>`, where the attribute is prohibited and dropped anyway.
+ */
+const markReorderableItems = (content: DocumentFragment): Set<string> => {
+  const marked = [...content.querySelectorAll("[data-mulmo-item-path]")]
+    .map((element) => ({ element, path: element.getAttribute("data-mulmo-item-path") ?? "" }))
+    .filter(({ path }) => path !== "");
+  const perParent = new Map<string, number>();
+  marked.forEach(({ path }) => {
+    const parent = splitItemPath(path)?.parent;
+    if (parent !== undefined) perParent.set(parent, (perParent.get(parent) ?? 0) + 1);
+  });
+  const items = new Set<string>();
+  marked.forEach(({ element, path }) => {
+    const parent = splitItemPath(path)?.parent;
+    if (parent === undefined || (perParent.get(parent) ?? 0) < 2) return;
+    items.add(path);
+    element.setAttribute("draggable", "true");
+  });
+  return items;
+};
+
+export const withEditingAffordances = (html: string): EditingSurface => {
+  if (typeof document === "undefined") return { html, paths: new Set(), items: new Set() };
+  const holder = document.createElement("template");
+  holder.innerHTML = html;
+  const paths = markEditableText(holder.content);
+  const items = markReorderableItems(holder.content);
+  return { html: holder.innerHTML, paths, items };
 };
