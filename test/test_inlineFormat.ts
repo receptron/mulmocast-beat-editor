@@ -51,6 +51,52 @@ test("bold again on the same selection removes it", () => {
   assert.equal(it.markup(), "hello world");
 });
 
+test("toggling off a PART of a formatted run splits it, rather than clearing the whole run", () => {
+  // Codex round 1. Unwrapping the enclosing element whenever both endpoints are inside it is
+  // too broad: un-bolding `ol` inside `bold` removed the bold from all of it.
+  [
+    { pick: "ol", want: "**b**ol**d**" },
+    { pick: "b", want: "b**old**" },
+    { pick: "d", want: "**bol**d" },
+    { pick: "bold", want: "bold" },
+  ].forEach(({ pick, want }) => {
+    const it = selecting("<strong>bold</strong>", pick);
+    assert.equal(toggleFormat(it.selection, BOLD), true, pick);
+    assert.equal(it.markup(), want, `un-bolding "${pick}"`);
+  });
+});
+
+test("toggling off one format keeps the others it sits inside", () => {
+  const inColour = selecting('<span class="text-d-primary"><strong>bold</strong></span>', "ol");
+  toggleFormat(inColour.selection, BOLD);
+  assert.equal(inColour.markup(), "{primary:**b**ol**d**}", "the colour survives losing the bold");
+
+  const inBold = selecting('<strong><span class="text-d-primary">bold</span></strong>', "ol");
+  toggleFormat(inBold.selection, colorFormat("primary"));
+  assert.equal(inBold.markup(), "**{primary:b}ol{primary:d}**", "and the bold survives losing the colour");
+});
+
+test("removing an OUTER format puts the inner ones back around the run", () => {
+  // Reaching the colour means lifting past the bold first. Without putting it back, "ol" would
+  // come out unbolded — a format the user never touched, silently dropped.
+  const it = selecting('<span class="text-d-primary"><strong>bold</strong></span>', "ol");
+  toggleFormat(it.selection, colorFormat("primary"));
+  assert.equal(it.markup(), "{primary:**b**}**ol**{primary:**d**}");
+});
+
+test("removal stops at the format it was asked for", () => {
+  // Without stopping, the lift keeps going and splits every ancestor above the match too.
+  const it = selecting('<em class="text-d-warning not-italic font-bold"><span class="text-d-primary"><strong>bold</strong></span></em>', "ol");
+  toggleFormat(it.selection, colorFormat("primary"));
+  assert.equal(it.markup(), "*{primary:**b**}**ol**{primary:**d**}*", "the emphasis still wraps the whole run");
+});
+
+test("clear inside a colour takes only what was selected", () => {
+  const it = selecting('<span class="text-d-primary"><strong>bold</strong></span>', "ol");
+  clearFormat(it.selection);
+  assert.equal(it.markup(), "{primary:**b**}ol{primary:**d**}");
+});
+
 test("emphasis carries the classes deck renders it with", () => {
   const it = selecting("warn me", "warn");
   toggleFormat(it.selection, EMPHASIS);

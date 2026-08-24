@@ -157,12 +157,8 @@ export const toggleFormat = (selection: Selection | null, format: InlineFormat):
   if (!found || !selection) return false;
   const { range, root } = found;
 
-  const start = enclosingFormat(range.startContainer, format, root);
-  if (start !== null && start === enclosingFormat(range.endContainer, format, root)) {
-    const inner = start.textContent;
-    unwrapElement(start);
-    tidyEditable(root);
-    selectText(selection, root, inner);
+  if (enclosingFormat(range.startContainer, format, root) && enclosingFormat(range.endContainer, format, root)) {
+    removeFormat(selection, range, root, format);
     return true;
   }
 
@@ -175,34 +171,68 @@ export const toggleFormat = (selection: Selection | null, format: InlineFormat):
 /** A span this module can recognise and that `isFormatting` will not: it is scaffolding. */
 const CLEAR_MARKER: InlineFormat = { tag: "span", className: "mulmo-clearing" };
 
+const isFormat = (element: Element, format: InlineFormat): boolean =>
+  element.tagName.toLowerCase() === format.tag && (element.getAttribute("class") ?? "") === (format.className ?? "");
+
 /**
- * Move an element up past every formatting ancestor, splitting each one around it.
+ * Move an element up past its formatting ancestors, splitting each one around it, and answer
+ * with the formats it passed — outermost last.
  *
- * Deleting a selection's contents and putting plain text back is not enough, because the
- * insertion point stays INSIDE the wrapper — measured, clearing a fully-selected
- * `<strong>bold</strong>` left the DOM byte-identical. Lifting the run out is what actually
- * removes the formatting, and splitting is what makes a partial selection work: clearing
- * `ol` in `<strong>bold</strong>` has to leave `<strong>b</strong>ol<strong>d</strong>`.
+ * Splitting is what makes a PARTIAL selection work. Unwrapping the whole ancestor instead is
+ * too broad in both directions: clearing a fully-selected `<strong>bold</strong>` by deleting
+ * and re-inserting text left the DOM byte-identical, and un-bolding just `ol` inside it
+ * removed the bold from `bold` entirely rather than leaving `**b**ol**d**`.
+ *
+ * What keeps the OTHER formats is `rewrapContents`, not this. Stopping at the match is only
+ * about work: measured across four nesting shapes, removing the `break` leaves the output
+ * byte-identical and merely splits every ancestor above the match and puts it back again.
  */
-const liftOutOfFormatting = (element: Element, root: HTMLElement): void => {
+const liftPast = (element: Element, root: HTMLElement, until: (ancestor: Element) => boolean): InlineFormat[] => {
+  const passed: InlineFormat[] = [];
   for (let parent = element.parentElement; parent && parent !== root && isFormatting(parent); parent = element.parentElement) {
+    const matched = until(parent);
+    passed.push({ tag: parent.tagName.toLowerCase(), className: parent.getAttribute("class") ?? undefined });
     const trailing = parent.cloneNode(false);
     while (element.nextSibling) trailing.appendChild(element.nextSibling);
     parent.after(element);
     if (trailing.hasChildNodes()) element.after(trailing);
+    if (matched) break;
   }
+  return passed;
+};
+
+/** Put `formats` back around the element's contents, innermost first. */
+const rewrapContents = (element: Element, formats: InlineFormat[]): void => {
+  formats.forEach((format) => {
+    const wrapper = element.ownerDocument.createElement(format.tag);
+    if (format.className) wrapper.setAttribute("class", format.className);
+    while (element.firstChild) wrapper.appendChild(element.firstChild);
+    element.appendChild(wrapper);
+  });
+};
+
+const sameFormat = (a: InlineFormat, b: InlineFormat): boolean => a.tag === b.tag && (a.className ?? "") === (b.className ?? "");
+
+/**
+ * Take the selection out of `format`, keeping every other format it sits in.
+ *
+ * The marker is scaffolding: it gives the run an identity to lift and split around, and is
+ * replaced by its own contents at the end.
+ */
+const removeFormat = (selection: Selection, range: Range, root: HTMLElement, format: InlineFormat | null): void => {
+  const marker = wrapRange(range, CLEAR_MARKER);
+  const passed = liftPast(marker, root, (ancestor) => format !== null && isFormat(ancestor, format));
+  rewrapContents(marker, format === null ? [] : passed.filter((passedFormat) => !sameFormat(passedFormat, format)));
+  const text = marker.textContent;
+  marker.replaceWith(...marker.childNodes);
+  tidyEditable(root);
+  selectText(selection, root, text);
 };
 
 /** Replace the selection with its own plain text, dropping every wrapper around and inside it. */
 export const clearFormat = (selection: Selection | null): boolean => {
   const found = formattableSelection(selection);
   if (!found || !selection) return false;
-  const { range, root } = found;
-  const text = range.toString();
-  const marker = wrapRange(range, CLEAR_MARKER);
-  liftOutOfFormatting(marker, root);
-  marker.replaceWith(root.ownerDocument.createTextNode(text));
-  tidyEditable(root);
-  selectText(selection, root, text);
+  removeFormat(selection, found.range, found.root, null);
   return true;
 };
