@@ -11,7 +11,18 @@ import {
   reachability,
   graftMarker,
   blurAsIfEditing,
+  selectWithin,
+  settle,
+  toolbarOf,
+  toolbarButtons,
+  tabTo,
+  focusOutTo,
+  focusOutToForeignToolbar,
+  bounceFocusBackTo,
+  blurToNowhere,
+  type MountedBeat,
 } from "./support/beatViewHarness";
+import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
 
 /**
@@ -254,3 +265,219 @@ test("Escape mid-conversion abandons the candidate, not the edit", async () => {
   assert.equal(view.host.querySelector('[data-mulmo-path="title"]')?.getAttribute("contenteditable"), "true");
   view.unmount();
 });
+
+test("the formatting toolbar appears for a selection inside the beat being edited", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  await settle();
+  assert.equal(toolbarOf(view), null, "nothing to format until something is selected");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "a selection inside the edited beat shows it");
+  view.unmount();
+});
+
+test("committing leaves the document as it was found", async () => {
+  // A listener left behind is invisible until something else goes wrong, so it is asserted —
+  // and so is its presence, or "never attached" would look the same as "cleaned up".
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  // The toolbar follows the selection, and the selection moves when anything scrolls or the
+  // window resizes — measured, scrolling the list 300px left the toolbar exactly where it was.
+  ["selectionchange", "scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 1, `editing watches ${type}`));
+  blurActive(view);
+  await settle();
+  const shown = toolbarOf(view);
+  const listeners = documentListenerCount("selectionchange");
+  view.unmount();
+  assert.equal(shown, null, "committing puts the toolbar away");
+  assert.equal(listeners, 0, "and detaches the listener");
+  ["scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 0, `no ${type} listener either`));
+});
+
+test("a read-only beat never shows the toolbar, however you select in it", async () => {
+  const view = await mountBeatView(slide(), { editable: false });
+  selectWithin(view, "title");
+  await settle();
+  const shown = toolbarOf(view);
+  view.unmount();
+  assert.equal(shown, null);
+});
+
+test("unmounting mid-edit leaves no selection listener behind", async () => {
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "the toolbar is up before unmounting");
+  // Unmounting removes the component's DOM either way, so a toolbar count proves nothing here.
+  // The leak is the listener itself: it would keep running against an unmounted instance.
+  assert.equal(documentListenerCount("selectionchange"), 1, "editing attaches exactly one");
+  view.unmount();
+  assert.equal(documentListenerCount("selectionchange"), 0, "and unmounting takes it away");
+});
+
+test("a beat replaced mid-edit takes the toolbar and the listener with it", async () => {
+  // No focusout fires for an element that was removed rather than blurred, so nothing else
+  // tears this down. Measured before the fix: the toolbar stayed up over a fragment that no
+  // longer had anything editable in it.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  assert.ok(toolbarOf(view), "the toolbar is up while editing");
+
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced" } } });
+  await settle();
+  await settle();
+  const stillShowing = view.host.parentElement?.querySelectorAll('[role="toolbar"]').length ?? 0;
+  const listeners = documentListenerCount("selectionchange");
+  view.unmount();
+  assert.equal(stillShowing, 0, "the toolbar goes with the fragment");
+  assert.equal(listeners, 0, "and so does the listener");
+});
+
+test("the toolbar is one tab stop, not ten", async () => {
+  // `role="toolbar"` promises arrows between the buttons and Tab past them. Ten stops would
+  // make skipping the toolbar cost ten presses.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  const buttons = toolbarButtons(view);
+  const stops = buttons.filter((button) => button.getAttribute("tabindex") === "0");
+  view.unmount();
+  assert.equal(buttons.length, 10, "bold, emphasis, seven colours, clear");
+  assert.equal(stops.length, 1, "exactly one of them is in the tab order");
+});
+
+test("tabbing into the toolbar does not end the edit", async () => {
+  // Focus leaving the editable element used to commit, which unmounted the toolbar before a
+  // keyboard user could press anything — the buttons are focusable and it says role="toolbar".
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  tabTo(view, toolbarButtons(view)[0]);
+  await settle();
+  const stillEditing = view.host.querySelector('[contenteditable="true"]') !== null;
+  const stillShowing = toolbarOf(view) !== null;
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(stillEditing, true, "the element is still being edited");
+  assert.equal(stillShowing, true, "and the toolbar is still there to press");
+  assert.equal(emitted, 0, "nothing was committed");
+});
+
+test("moving to another marker in the same beat commits the first edit", async () => {
+  // The keyboard fix widened the commit guard to "anywhere inside the beat", and that LOST
+  // DATA: both elements stayed editable and only the second committed. Only a hop between the
+  // text and its own toolbar may skip the commit.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "T-EDITED");
+  focusOutTo(view, "subtitle");
+  await settle();
+  const emitted = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  const stillEditable = view.host.querySelectorAll('[contenteditable="true"]').length;
+  view.unmount();
+  assert.equal(emitted?.image.slide.title, "T-EDITED", "the first edit is not dropped");
+  assert.equal(stillEditable, 0, "and the first element stops being editable");
+});
+
+test("another element claiming role=toolbar does not suppress this beat's commit", async () => {
+  // An `html_tailwind` beat renders author markup verbatim, and the author can put
+  // `role="toolbar"` in it — measured. Checking for any toolbar on the page rather than this
+  // beat's own would let that markup swallow an edit happening somewhere else.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "T-EDITED");
+  focusOutToForeignToolbar(view);
+  await settle();
+  const emitted = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  view.unmount();
+  assert.equal(emitted?.image.slide.title, "T-EDITED", "the edit is committed all the same");
+});
+
+test("focus bouncing from a toolbar button back to the text does not commit", async () => {
+  // Applying a format re-selects inside the contenteditable, which moves focus off the button
+  // and back to the text. Treating that as the end of the edit would commit after every press
+  // and unmount the toolbar under the user's finger.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  bounceFocusBackTo(view, "title");
+  await settle();
+  const stillShowing = toolbarOf(view) !== null;
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(emitted, 0, "nothing is committed");
+  assert.equal(stillShowing, true, "and the toolbar stays up");
+});
+
+test("a beat replaced mid-edit cannot write the old element's html into the new one", async () => {
+  // Codex round 5. Cleanup cleared the toolbar and the listener but not the element the commit
+  // path trusts, so a later blur wrote the DETACHED node's html into the current beat —
+  // measured, `title: "STALE"` landed on a beat whose title was already "Replaced".
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "STALE");
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced", subtitle: "NewSub" } } });
+  await settle();
+  await settle();
+  const marker = view.host.querySelector<HTMLElement>('[data-mulmo-path="title"]');
+  const win = view.host.ownerDocument.defaultView;
+  if (!marker || !win) throw new Error("setup");
+  marker.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  await settle();
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(emitted, 0, "the replaced beat is left alone");
+});
+
+/**
+ * Codex round 7: refusing the write is not enough. A half-alive session keeps the element
+ * `contenteditable`, so `startEditing` early-returns, no new session is recorded, and the NEXT
+ * edit is refused too — the field is stuck.
+ */
+const assertEditingIsFullyOver = (view: { host: HTMLElement }): void => {
+  assert.equal(view.host.querySelectorAll('[contenteditable="true"]').length, 0, "nothing is left editable");
+  assert.equal(view.host.parentElement?.querySelector('[role="toolbar"]') ?? null, null, "the toolbar is gone");
+  ["selectionchange", "scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 0, `no ${type} listener is left behind`));
+};
+
+test("a beat replaced by one that renders identically still ends the edit", async () => {
+  // Codex round 6. When the replacement renders byte-identical HTML, Vue never touches the DOM,
+  // so the edited node stays connected and "has it left the document" answers no. Measured, the
+  // typed text was written into the replacement beat.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "STALE");
+  selectWithin(view, "title");
+  await settle();
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Before", subtitle: "Sub" } } });
+  await settle();
+  blurToNowhere(view);
+  await settle();
+
+  assert.equal(view.emitted.length, 0, "the replacement beat is left alone");
+  assertEditingIsFullyOver(view);
+  await assertTheMarkerStillWorks(view);
+  view.unmount();
+});
+
+/** After a refused commit the field must not be stuck: the next edit of it has to land. */
+const assertTheMarkerStillWorks = async (view: MountedBeat): Promise<void> => {
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "AFTER");
+  blurToNowhere(view);
+  await settle();
+  const next = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  assert.equal(next?.image.slide.title, "AFTER", "the next edit of the same marker commits");
+};

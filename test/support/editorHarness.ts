@@ -5,11 +5,19 @@ import { dom } from "./domGlobals";
 import { build } from "vite";
 import vue from "@vitejs/plugin-vue";
 import path from "node:path";
+import { rmSync } from "node:fs";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import type { Component } from "vue";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
-const OUT_DIR = "node_modules/.tmp/editor-harness";
+/**
+ * One output directory per process, because `node:test` runs test FILES in parallel and each
+ * one builds this bundle. Sharing a directory means concurrent vite builds with
+ * `emptyOutDir: true` deleting each other's output — the symptom is an intermittent
+ * `Cannot find module .../components.js` in whichever file lost the race, which reads like a
+ * real failure and is not.
+ */
+const OUT_DIR = `node_modules/.tmp/editor-harness-${process.pid}`;
 
 export type EditorName = "Inspector" | "ContentBlockEditor" | "BeatView" | "BeatListEditor";
 type Editors = Record<EditorName, Component>;
@@ -34,12 +42,20 @@ const editors: Promise<Editors> = (async () => {
       outDir: OUT_DIR,
       emptyOutDir: true,
       minify: false,
+      // Vue must NOT be bundled. Inlined, the components get their own copy of the reactivity
+      // system, and a test that mounts them with its own `import("vue")` is driving a second
+      // one: a ref written inside a component notifies its own watchers and not the render
+      // effect the test's Vue created. Measured — a `ref` set by an event listener fired its
+      // watcher four times and never re-rendered, and Vue warned "Missing ref owner context".
+      rollupOptions: { external: ["vue"] },
     },
   });
   // `import()` takes a URL. A Windows absolute path is not one — Node reads the drive letter as a
   // scheme and fails with ERR_UNSUPPORTED_ESM_URL_SCHEME ("Received protocol 'd:'").
   const loaded: unknown = await import(pathToFileURL(path.join(ROOT, OUT_DIR, "components.js")).href);
   if (!isEditors(loaded)) throw new Error(`the harness bundle at ${OUT_DIR} exported no editors`);
+  // The directory is this process's alone, so it is safe to take it with us.
+  process.on("exit", () => rmSync(path.join(ROOT, OUT_DIR), { recursive: true, force: true }));
   return loaded;
 })();
 

@@ -9,11 +9,16 @@ import type { EditableBeat } from "../../src/beatHelpers";
  * Reuses the bundle and jsdom window the editor harness already builds — a second `vite` build
  * per run buys nothing, and a second jsdom would give Vue a document it did not capture at load.
  *
- * KNOWN BLIND SPOT: mounted this way, BeatView's `ref="host"` lands on a vnode Vue treats as
- * hoisted and `host.value` stays null, so anything reached through it — `driveRuntimes`, which
- * draws chart.js and mermaid — does nothing here. That is the harness, not the component: the
- * production build draws them (measured, 2 canvases at real size and 2 mermaid SVGs in
- * `yarn build` + `vite preview`). Nothing in these tests may depend on that ref.
+ * This used to carry a blind spot around `ref="host"`, reported by Vue as "Missing ref owner
+ * context. ref cannot be used on hoisted vnodes". The cause was the harness bundling its own
+ * copy of Vue: the components ran on one reactivity system and the test's `import("vue")`
+ * created the render effect on another. Externalising vue in `editorHarness.ts` fixed it — the
+ * warning is gone and a ref written by a DOM listener now re-renders, which is what let the
+ * formatting toolbar be tested at all.
+ *
+ * What jsdom still cannot show is DRAWING: chart.js and mermaid need a real 2d context, so a
+ * chart beat renders its `<canvas>` and nothing is painted into it. Assert structure here and
+ * measure the picture in a browser.
  */
 export type MountedBeat = {
   host: HTMLElement;
@@ -28,12 +33,12 @@ const mountPointIn = (): HTMLElement => {
 };
 
 /** Mount one compiled component with `props`, and hand back the point it was mounted at. */
-const mount = async (name: EditorName, props: Record<string, unknown>): Promise<{ mountPoint: HTMLElement; unmount: () => void }> => {
+const mount = async (name: EditorName, props: () => Record<string, unknown>): Promise<{ mountPoint: HTMLElement; unmount: () => void }> => {
   await vueCanRender;
   const { createApp, h } = await import("vue");
   const components = await compiled;
   const mountPoint = mountPointIn();
-  const app = createApp({ render: () => h(components[name], props) });
+  const app = createApp({ render: () => h(components[name], props()) });
   app.mount(mountPoint);
   return {
     mountPoint,
@@ -46,12 +51,12 @@ const mount = async (name: EditorName, props: Record<string, unknown>): Promise<
 
 export const mountBeatView = async (beat: EditableBeat, options: { editable: boolean }): Promise<MountedBeat> => {
   const emitted: unknown[] = [];
-  const { mountPoint, unmount } = await mount("BeatView", {
+  const { mountPoint, unmount } = await mount("BeatView", () => ({
     beat,
     idPrefix: "probe",
     editable: options.editable,
     onUpdate: (next: unknown) => emitted.push(next),
-  });
+  }));
   const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
   if (!host) throw new Error("BeatView rendered no fragment — the beat did not render at all");
   return { host, emitted, unmount };
@@ -135,6 +140,96 @@ export const blurAsIfEditing = (view: MountedBeat, path: string, html: string): 
 /** Mount the whole list editor, to see a beats array the way a host would hand one over. */
 export const mountBeatList = async (beats: EditableBeat[]): Promise<MountedBeat> => {
   const emitted: unknown[] = [];
-  const { mountPoint, unmount } = await mount("BeatListEditor", { beats, "onUpdate:beats": (next: unknown) => emitted.push(next) });
+  const { mountPoint, unmount } = await mount("BeatListEditor", () => ({ beats, "onUpdate:beats": (next: unknown) => emitted.push(next) }));
   return { host: mountPoint, emitted, unmount };
+};
+
+/** Select the whole text of the marker at `path`, the way a double-click would. */
+export const selectWithin = (view: MountedBeat, path: string): void => {
+  const element = at(view, path);
+  const selection = dom.window.getSelection();
+  if (!selection) throw new Error("jsdom gave no Selection");
+  const range = dom.window.document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  dom.window.document.dispatchEvent(new dom.window.Event("selectionchange"));
+};
+
+/** Let Vue flush. A ref set by a DOM listener renders on a microtask, not synchronously. */
+export const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
+
+/** The formatting toolbar belonging to THIS mount, if it is showing. */
+export const toolbarOf = (view: MountedBeat): Element | null => view.host.parentElement?.querySelector('[role="toolbar"]') ?? null;
+
+export type ReactiveBeat = MountedBeat & { replaceBeat: (next: EditableBeat) => void };
+
+/** Mount a BeatView whose `beat` prop can be changed afterwards, the way a host would. */
+export const mountBeatViewReactive = async (beat: EditableBeat): Promise<ReactiveBeat> => {
+  const { ref } = await import("vue");
+  const emitted: unknown[] = [];
+  const current = ref<EditableBeat>(beat);
+  const props = () => ({ beat: current.value, idPrefix: "probe", editable: true, onUpdate: (next: unknown) => emitted.push(next) });
+  const { mountPoint, unmount } = await mount("BeatView", props);
+  const host = mountPoint.querySelector<HTMLElement>(".beat-fragment");
+  if (!host) throw new Error("BeatView rendered no fragment");
+  const replaceBeat = (next: EditableBeat) => {
+    current.value = next;
+  };
+  return { host, emitted, unmount, replaceBeat };
+};
+
+/** The toolbar's buttons, in order. */
+export const toolbarButtons = (view: MountedBeat): HTMLElement[] => [
+  ...(view.host.parentElement?.querySelectorAll<HTMLElement>('[role="toolbar"] button') ?? []),
+];
+
+/**
+ * Move focus from the edited element to `next`, the way Tab does.
+ *
+ * jsdom COLLAPSES the selection when focus moves to a button; Chromium keeps it, which is the
+ * only reason a floating toolbar is usable at all — measured, the whole keyboard flow works in
+ * a browser. The range is put back here so the mounted tests exercise the browser's behaviour
+ * rather than jsdom's.
+ */
+export const tabTo = (view: MountedBeat, next: HTMLElement): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  const selection = dom.window.getSelection();
+  const held = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+  next.focus();
+  if (held && selection) {
+    selection.removeAllRanges();
+    selection.addRange(held);
+  }
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: next }));
+};
+
+/** Move focus from the edited element to another marker, the way clicking a sibling does. */
+export const focusOutTo = (view: MountedBeat, path: string): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
+};
+
+/** Focus something outside this beat that merely claims `role="toolbar"`. */
+export const focusOutToForeignToolbar = (view: MountedBeat): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  const foreign = dom.window.document.createElement("div");
+  foreign.setAttribute("role", "toolbar");
+  const button = dom.window.document.createElement("button");
+  foreign.appendChild(button);
+  dom.window.document.body.appendChild(foreign);
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: button }));
+  foreign.remove();
+};
+
+/** The bounce a toolbar action causes: focus leaves the button back to the text being edited. */
+export const bounceFocusBackTo = (view: MountedBeat, path: string): void => {
+  const button = view.host.parentElement?.querySelector<HTMLElement>('[role="toolbar"] button');
+  button?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
+};
+
+/** Blur the element being edited with nothing receiving focus, as clicking the page does. */
+export const blurToNowhere = (view: MountedBeat): void => {
+  const editing = view.host.querySelector<HTMLElement>('[contenteditable="true"]') ?? view.host.querySelector<HTMLElement>("[data-mulmo-path]");
+  editing?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
 };

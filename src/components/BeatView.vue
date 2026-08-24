@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/browser";
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
 import { sanitizeFragment } from "../sanitize";
 import { ensureDocumentStyles } from "../documentStyles";
 import { applyInlineEdit, isInlineEditable, withEditingAffordances, type EditingSurface } from "../inlineEdit";
+import { BOLD, EMPHASIS, clearFormat, colorFormat, formattableSelection, toggleFormat, type AccentColor, type InlineFormat } from "../inlineFormat";
+import { placeToolbar } from "../toolbarPosition";
+import InlineToolbar from "./InlineToolbar.vue";
 
 /**
  * One beat, rendered as a div.
@@ -51,6 +54,20 @@ const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
 
+/** This beat's own subtree, so another beat's markup cannot be mistaken for our toolbar. */
+const shell = ref<HTMLElement | null>(null);
+
+/** The element being edited, remembered because a commit can be triggered from the toolbar. */
+const editing_element = ref<HTMLElement | null>(null);
+
+/**
+ * The beat that edit belongs to. A commit may only ever write back to the one it started on.
+ *
+ * `shallowRef`, because `ref` wraps an object value in a reactive proxy and the comparison
+ * against the raw `props.beat` would then never match — measured, every commit was refused.
+ */
+const editing_beat = shallowRef<EditableBeat | null>(null);
+
 /**
  * The editable element a pointer or key event happened inside, if any.
  *
@@ -73,10 +90,77 @@ const editableTarget = (event: Event): HTMLElement | null => {
  */
 const htmlBeforeEdit = ref("");
 
+/**
+ * Where the formatting toolbar sits, or null when there is nothing to format.
+ *
+ * Driven by `selectionchange`, which is a document-level event: the listener is attached only
+ * while this beat has something being edited, so a list of twenty beats does not run twenty
+ * handlers for every caret move.
+ */
+const toolbar = ref<{ x: number; y: number } | null>(null);
+
+/** Sized to what the toolbar renders: two buttons, seven swatches, a clear, and two rules. */
+const TOOLBAR_BOX = { width: 268, height: 34 };
+
+const repositionToolbar = () => {
+  const found = formattableSelection(document.getSelection());
+  if (!found) {
+    toolbar.value = null;
+    return;
+  }
+  const rect = found.range.getBoundingClientRect();
+  toolbar.value = placeToolbar(rect, TOOLBAR_BOX, { width: window.innerWidth, height: window.innerHeight });
+};
+
+/**
+ * The toolbar follows the selection, and the selection moves for more reasons than editing.
+ *
+ * `scroll` in the CAPTURE phase, because a scroll event from the beat list does not bubble —
+ * measured, scrolling the list 300px moved the selection 300px and left the toolbar exactly
+ * where it was, floating over unrelated content with its buttons still live.
+ */
+const startWatchingSelection = () => {
+  document.addEventListener("selectionchange", repositionToolbar);
+  document.addEventListener("scroll", repositionToolbar, true);
+  window.addEventListener("resize", repositionToolbar);
+};
+
+const stopWatchingSelection = () => {
+  document.removeEventListener("selectionchange", repositionToolbar);
+  document.removeEventListener("scroll", repositionToolbar, true);
+  window.removeEventListener("resize", repositionToolbar);
+  toolbar.value = null;
+};
+
+/**
+ * Run a toolbar action and leave focus where the user had it.
+ *
+ * Re-selecting inside a `contenteditable` moves focus back to the text — measured, a keyboard
+ * user pressing Bold landed back in the heading and had to Tab to the toolbar again for every
+ * single press. A mouse user never notices, because `mousedown.prevent` kept focus in the text
+ * all along.
+ */
+const keepingToolbarFocus = (act: () => boolean) => {
+  const held = document.activeElement;
+  const fromToolbar = held instanceof HTMLElement && held.closest('[role="toolbar"]') !== null;
+  if (!act()) return;
+  repositionToolbar();
+  if (fromToolbar && held instanceof HTMLElement) held.focus();
+};
+
+const applyFormat = (format: InlineFormat) => keepingToolbarFocus(() => toggleFormat(document.getSelection(), format));
+
+const applyColor = (color: AccentColor) => applyFormat(colorFormat(color));
+
+const applyClear = () => keepingToolbarFocus(() => clearFormat(document.getSelection()));
+
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
+  editing_element.value = target;
+  editing_beat.value = props.beat;
   target.setAttribute("contenteditable", "true");
+  startWatchingSelection();
   if (focusIt || document.activeElement !== target) target.focus();
 };
 
@@ -92,12 +176,54 @@ const beginEdit = (event: MouseEvent) => {
  * is the single place an edit lands — and `applyInlineEdit` answers null when nothing changed,
  * which is what stops an ordinary click-away from rebuilding the fragment.
  */
+/**
+ * Focus landing on THIS beat's toolbar, or coming back from it to the element being edited.
+ *
+ * Scoped to this component's own subtree, not to any `[role="toolbar"]` on the page: an
+ * `html_tailwind` beat renders author markup verbatim, and one carrying that role would
+ * otherwise suppress a commit happening in a different beat — measured, the author can put it
+ * there (a `slide` beat cannot: 0 of 3 attempts survive the renderer and the sanitizer).
+ *
+ * `contains` rather than identity, so a descendant of the edited element is still inside it.
+ */
+const staysWithinThisEdit = (related: EventTarget | null): boolean => {
+  if (!(related instanceof Element)) return false;
+  const ownToolbar = (shell.value?.contains(related) ?? false) && related.closest('[role="toolbar"]') !== null;
+  return ownToolbar || (editing_element.value?.contains(related) ?? false);
+};
+
+/**
+ * End the editing session, whether or not anything is written back.
+ *
+ * One place, because a refusal that forgets any part of it leaves the field stuck: the element
+ * stays `contenteditable`, so `startEditing` early-returns and never records a new session, and
+ * the next commit is refused too — measured as an edit the user could not save.
+ */
+const endEditing = (target: HTMLElement) => {
+  target.removeAttribute("contenteditable");
+  editing_element.value = null;
+  editing_beat.value = null;
+  stopWatchingSelection();
+};
+
 const commit = (event: FocusEvent) => {
-  const target = event.target;
-  if (!(target instanceof HTMLElement) || target.getAttribute("contenteditable") !== "true") return;
+  const target = editing_element.value;
+  if (!target || target.getAttribute("contenteditable") !== "true") return;
+  if (staysWithinThisEdit(event.relatedTarget)) return;
+  // An edit belongs to the beat it started on, and may not be written to a different one.
+  //
+  // The obvious guard — refuse a node that has left the document — is not enough: a host can
+  // replace the beat with a different object that renders byte-identical HTML, and then Vue
+  // never touches the DOM and the node stays connected. Measured, that wrote the typed text
+  // into the replacement. Comparing the beat catches both, so it is the only net here; two
+  // where either suffices means neither can be break-checked.
+  if (editing_beat.value !== props.beat) {
+    endEditing(target);
+    return;
+  }
   const path = target.getAttribute("data-mulmo-path") ?? "";
   const html = target.innerHTML;
-  target.removeAttribute("contenteditable");
+  endEditing(target);
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
   if (next) emit("update", next);
 };
@@ -117,7 +243,7 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   } else if (event.key === "Escape") {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
-    target.removeAttribute("contenteditable");
+    endEditing(target);
     target.blur();
   }
 };
@@ -145,13 +271,28 @@ onMounted(() => {
   ensureDocumentStyles();
   void draw().catch(() => {});
 });
-watch(html, () => void draw().catch(() => {}), { flush: "post" });
+watch(
+  html,
+  () => {
+    // A new fragment means the element being edited was just destroyed, and no focusout fires for
+    // a node that was removed rather than blurred. Measured: a host replacing the beat mid-edit
+    // left the toolbar floating over content it could no longer format, and the listener attached.
+    stopWatchingSelection();
+    void draw().catch(() => {});
+  },
+  { flush: "post" },
+);
 
-onBeforeUnmount(() => releaseRuntimes(host.value));
+onBeforeUnmount(() => {
+  releaseRuntimes(host.value);
+  // The selection listener is on the document, so unmounting mid-edit would otherwise leave a
+  // handler holding this component alive and repositioning a toolbar nobody can see.
+  stopWatchingSelection();
+});
 </script>
 
 <template>
-  <div>
+  <div ref="shell" @focusout="commit">
     <component :is="'style'" v-if="fragment?.css">{{ fragment.css }}</component>
     <!--
       The fragment is sanitized above. `beatToHtml` documents that raw HTML, event handlers
@@ -164,11 +305,19 @@ onBeforeUnmount(() => releaseRuntimes(host.value));
       ref="host"
       :class="['beat-fragment', editing ? 'beat-fragment--editable' : '']"
       @click="beginEdit"
-      @focusout="commit"
       @keydown="onKeydown"
       v-html="html"
     ></div>
     <!-- eslint-enable vue/no-v-html -->
     <p v-else class="rounded border border-dashed border-stone-300 p-3 text-xs text-stone-400">nothing to preview yet</p>
+    <InlineToolbar
+      v-if="toolbar"
+      :x="toolbar.x"
+      :y="toolbar.y"
+      @bold="applyFormat(BOLD)"
+      @emphasis="applyFormat(EMPHASIS)"
+      @color="applyColor"
+      @clear="applyClear"
+    />
   </div>
 </template>
