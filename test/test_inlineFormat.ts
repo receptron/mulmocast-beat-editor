@@ -21,6 +21,40 @@ const select = (document: Document, root: HTMLElement, selection: Selection, tex
   throw new Error(`"${text}" is not in ${root.innerHTML}`);
 };
 
+/** Build a range over characters `from`..`to` of `root`'s text, crossing elements as needed. */
+const rangeOverCharacters = (document: Document, root: HTMLElement, from: number, to: number): Range => {
+  const walker = document.createTreeWalker(root, 4 /* NodeFilter.SHOW_TEXT */);
+  const range = document.createRange();
+  let seen = 0;
+  let started = false;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const length = (node.nodeValue ?? "").length;
+    if (!started && seen + length > from) {
+      range.setStart(node, from - seen);
+      started = true;
+    }
+    if (started && seen + length >= to) {
+      range.setEnd(node, to - seen);
+      return range;
+    }
+    seen += length;
+  }
+  throw new Error(`no range covers ${from}..${to} of ${root.innerHTML}`);
+};
+
+/** Select characters `from`..`to` of the leaf's text, which may cross element boundaries. */
+const selectRange = (html: string, from: number, to: number) => {
+  const dom = new JSDOM(`<!doctype html><body><p data-mulmo-path="title" contenteditable="true">${html}</p></body>`);
+  Object.assign(globalThis, { Node: dom.window.Node, NodeFilter: dom.window.NodeFilter });
+  const root = dom.window.document.querySelector<HTMLElement>("[data-mulmo-path]");
+  const selection = dom.window.getSelection();
+  if (!root || !selection) throw new Error("setup");
+  const range = rangeOverCharacters(dom.window.document, root, from, to);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return { root, selection, markup: () => htmlToMarkup(root.innerHTML), text: () => root.textContent };
+};
+
 /** An editable leaf holding `html`, with `text` selected inside it. */
 const selecting = (html: string, text: string) => {
   const dom = new JSDOM(`<!doctype html><body><p data-mulmo-path="title" contenteditable="true">${html}</p></body>`);
@@ -236,4 +270,49 @@ test("tidyEditable is not super-linear on the shapes a paste can produce", () =>
   const elapsed = performance.now() - started;
 
   assert.ok(elapsed < 500, `tidyEditable took ${Math.round(elapsed)}ms over ${TIDY_SHAPES.length} shapes (healthy is under 100ms); the quadratic pass is back`);
+});
+
+test("a selection that crosses a formatting boundary is still stripped", () => {
+  // Lifting only deals with formatting the run SITS IN. Crossing a boundary puts the marker at
+  // the top with the old wrappers still inside it — measured, both of these left the DOM
+  // completely untouched before the run's interior was stripped too.
+  const cleared = selectRange("<strong>bo</strong><em>ld</em>", 1, 3);
+  assert.equal(clearFormat(cleared.selection), true);
+  assert.equal(cleared.markup(), "**b**ol{warning:d}", "the bold over `ol` goes; the em on `d` is untouched");
+  assert.equal(cleared.text(), "bold", "and no text moves");
+
+  const unbolded = selectRange("<strong>bo</strong><strong>ld</strong>", 1, 3);
+  assert.equal(toggleFormat(unbolded.selection, BOLD), true);
+  assert.equal(unbolded.markup(), "**b**ol**d**");
+  assert.equal(unbolded.text(), "bold");
+});
+
+test("clearing across two colours leaves the parts outside the selection", () => {
+  const it = selectRange('<span class="text-d-primary">ab</span><span class="text-d-danger">cd</span>', 1, 3);
+  clearFormat(it.selection);
+  assert.equal(it.markup(), "{primary:a}bc{danger:d}");
+  assert.equal(it.text(), "abcd");
+});
+
+test("removal leaves the selection on the run it acted on, not on an identical one", () => {
+  // Codex round 2. Restoring by searching for the text lands on the FIRST match: clearing the
+  // second `foo` left the selection inside the first, and the next press coloured the wrong word.
+  const it = selectRange("<strong>foo</strong> <strong>foo</strong>", 4, 7);
+  clearFormat(it.selection);
+  assert.equal(it.markup(), "**foo** foo");
+  assert.equal(it.selection.toString(), "foo");
+
+  toggleFormat(it.selection, colorFormat("primary"));
+  assert.equal(it.markup(), "**foo** {primary:foo}", "the colour lands on the run that was cleared");
+});
+
+test("a range spanning two runs of the SAME format is stripped across both", () => {
+  // Lifting cannot reach these: the marker lands at the common ancestor, above both wrappers.
+  [{ act: (selection: Selection) => clearFormat(selection) }, { act: (selection: Selection) => toggleFormat(selection, BOLD) }].forEach(({ act }, index) => {
+    const it = selectRange("<strong>abc</strong><strong>def</strong>", 1, 5);
+    assert.equal(act(it.selection), true, `case ${index}`);
+    assert.equal(it.markup(), "**a**bcde**f**", `case ${index}`);
+    assert.equal(it.text(), "abcdef", `case ${index}: no text moves`);
+    assert.equal(it.selection.toString(), "bcde", `case ${index}: and the selection survives`);
+  });
 });

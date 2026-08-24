@@ -122,19 +122,44 @@ const selectContentsOf = (selection: Selection, element: Element): void => {
   selection.addRange(range);
 };
 
-/** Re-select `text` inside `root` — used after an unwrap, where the old range is gone. */
-const selectText = (selection: Selection, root: HTMLElement, text: string): void => {
-  if (!text) return;
+/**
+ * Where a range boundary sits, counted in characters of `root`'s text.
+ *
+ * Node identity cannot survive the surgery — the nodes the selection pointed at are unwrapped,
+ * split or merged. Character offsets do, because removal never changes the text.
+ */
+const characterOffset = (root: HTMLElement, container: Node, offset: number): number => {
+  const upTo = root.ownerDocument.createRange();
+  upTo.selectNodeContents(root);
+  upTo.setEnd(container, offset);
+  return upTo.toString().length;
+};
+
+/**
+ * Select characters `from`..`to` of `root`'s text, crossing elements as needed.
+ *
+ * Restoring by searching for the text instead lands on the FIRST match: measured, clearing the
+ * second `foo` of `<strong>foo</strong> <strong>foo</strong>` left the selection inside the
+ * first one, so the next toolbar press coloured the wrong word.
+ */
+export const selectCharacters = (selection: Selection, root: HTMLElement, from: number, to: number): void => {
   const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const range = root.ownerDocument.createRange();
+  let seen = 0;
+  let started = false;
   for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-    const index = (node.nodeValue ?? "").indexOf(text);
-    if (index < 0) continue;
-    const range = root.ownerDocument.createRange();
-    range.setStart(node, index);
-    range.setEnd(node, index + text.length);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return;
+    const length = (node.nodeValue ?? "").length;
+    if (!started && seen + length >= from) {
+      range.setStart(node, from - seen);
+      started = true;
+    }
+    if (started && seen + length >= to) {
+      range.setEnd(node, to - seen);
+      selection.removeAllRanges();
+      selection.addRange(range);
+      return;
+    }
+    seen += length;
   }
 };
 
@@ -201,6 +226,19 @@ const liftPast = (element: Element, root: HTMLElement, until: (ancestor: Element
   return passed;
 };
 
+/**
+ * Drop the wrappers the removal targets from INSIDE the run.
+ *
+ * Lifting only deals with formatting the run sits in. A selection that crosses an element
+ * boundary lands its marker at the top, with the old wrappers still inside it — measured, both
+ * clearing and un-bolding across `<strong>bo</strong><em>ld</em>` left the DOM untouched.
+ */
+const stripInside = (marker: Element, format: InlineFormat | null): void => {
+  [...marker.querySelectorAll([...INLINE_TAGS].join(","))]
+    .filter((element) => isFormatting(element) && (format === null || isFormat(element, format)))
+    .forEach(unwrapElement);
+};
+
 /** Put `formats` back around the element's contents, innermost first. */
 const rewrapContents = (element: Element, formats: InlineFormat[]): void => {
   formats.forEach((format) => {
@@ -220,13 +258,15 @@ const sameFormat = (a: InlineFormat, b: InlineFormat): boolean => a.tag === b.ta
  * replaced by its own contents at the end.
  */
 const removeFormat = (selection: Selection, range: Range, root: HTMLElement, format: InlineFormat | null): void => {
+  const from = characterOffset(root, range.startContainer, range.startOffset);
+  const to = characterOffset(root, range.endContainer, range.endOffset);
   const marker = wrapRange(range, CLEAR_MARKER);
+  stripInside(marker, format);
   const passed = liftPast(marker, root, (ancestor) => format !== null && isFormat(ancestor, format));
   rewrapContents(marker, format === null ? [] : passed.filter((passedFormat) => !sameFormat(passedFormat, format)));
-  const text = marker.textContent;
   marker.replaceWith(...marker.childNodes);
   tidyEditable(root);
-  selectText(selection, root, text);
+  selectCharacters(selection, root, from, to);
 };
 
 /** Replace the selection with its own plain text, dropping every wrapper around and inside it. */
