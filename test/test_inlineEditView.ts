@@ -21,6 +21,7 @@ import {
   bounceFocusBackTo,
   blurToNowhere,
   type MountedBeat,
+  pressDownOn,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -481,3 +482,64 @@ const assertTheMarkerStillWorks = async (view: MountedBeat): Promise<void> => {
   const next = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
   assert.equal(next?.image.slide.title, "AFTER", "the next edit of the same marker commits");
 };
+
+test("a click on another marker survives the rebuild its own commit causes", async () => {
+  // #61. Pressing on another field commits the one being edited, the parent replaces the beat,
+  // and `v-html` rebuilds the fragment — so the `click` lands on a detached node and the
+  // delegated handler never sees it. Measured on main: the field did not open and a second
+  // click was needed. `mousedown` runs before all of that.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+
+  // The host does what a host does: the emit replaces the beat, which rebuilds the fragment.
+  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
+  if (!emitted) throw new Error("the first edit should have committed");
+  view.replaceBeat(emitted);
+  await settle();
+  await settle();
+
+  const editable = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(editable, ["subtitle"], "the marker the pointer went down on is the one that opens");
+});
+
+test("a click that lands normally leaves no intent behind", async () => {
+  // Otherwise the next unrelated re-render would open an editor nobody asked for.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  pressDownOn(view, "title");
+  clickPath(view, "title");
+  await settle();
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Other", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const editable = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(editable, 0, "the re-render opens nothing");
+});
+
+test("Enter leaves the caret at the END of the field", async () => {
+  // #62. Chromium does not place a caret in an element that only became `contenteditable` this
+  // tick, and focusing it again on a later tick does not help — measured, all three. Without a
+  // caret inside, the next `Cmd+A` selects the whole page instead of the field.
+  //
+  // Asserted as a POSITION, not merely as "a caret exists": jsdom is more forgiving than
+  // Chromium and puts one at offset 0 on its own, so "inside and collapsed" passes with the
+  // fix removed. Where it sits is what discriminates — and the end is what makes typing append
+  // rather than replace.
+  const view = await mountBeatView(slide(), { editable: true });
+  pressOn(view, "title", "Enter");
+  await settle();
+  const selection = view.host.ownerDocument.defaultView?.getSelection();
+  const marker = view.host.querySelector('[data-mulmo-path="title"]');
+  const at_end = selection?.anchorNode === marker && selection.anchorOffset === marker?.childNodes.length;
+  const collapsed = selection?.isCollapsed;
+  view.unmount();
+  assert.equal(at_end, true, "the caret is at the end of the field");
+  assert.equal(collapsed, true, "and it is a caret, not a selection — typing must not replace the text");
+});

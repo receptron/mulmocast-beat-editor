@@ -154,6 +154,24 @@ const applyColor = (color: AccentColor) => applyFormat(colorFormat(color));
 
 const applyClear = () => keepingToolbarFocus(() => clearFormat(document.getSelection()));
 
+/**
+ * Put the caret at the end of an element that has just become editable.
+ *
+ * Chromium does not place one in an element that only became `contenteditable` this tick, and
+ * focusing it again later does not help — measured, all three: after Enter the selection was
+ * outside the element and `Cmd+A` selected the whole page. The mouse path never showed it
+ * because the click places the caret itself.
+ */
+const placeCaretIn = (target: HTMLElement) => {
+  const selection = document.getSelection();
+  if (!selection) return;
+  const caret = document.createRange();
+  caret.selectNodeContents(target);
+  caret.collapse(false);
+  selection.removeAllRanges();
+  selection.addRange(caret);
+};
+
 const startEditing = (target: HTMLElement, focusIt: boolean) => {
   if (target.getAttribute("contenteditable") === "true") return;
   htmlBeforeEdit.value = target.innerHTML;
@@ -161,14 +179,44 @@ const startEditing = (target: HTMLElement, focusIt: boolean) => {
   editing_beat.value = props.beat;
   target.setAttribute("contenteditable", "true");
   startWatchingSelection();
-  if (focusIt || document.activeElement !== target) target.focus();
+  if (focusIt || document.activeElement !== target) {
+    target.focus();
+    placeCaretIn(target);
+  }
+};
+
+/**
+ * The marker a pointer went down on, kept until the click that follows lands.
+ *
+ * Pressing on another field commits the one being edited, the parent replaces the beat, and
+ * `v-html` rebuilds the fragment — so by the time the `click` fires, its target is detached
+ * and the delegated handler never sees it. Measured: the field did not open and a second
+ * click was needed. `mousedown` runs before all of that, while the target is still there.
+ */
+const pending_path = ref<string | null>(null);
+
+const noteIntent = (event: MouseEvent) => {
+  if (!editing.value) return;
+  pending_path.value = editableTarget(event)?.getAttribute("data-mulmo-path") ?? null;
 };
 
 const beginEdit = (event: MouseEvent) => {
   if (!editing.value) return;
+  // The click arrived, so nothing needs carrying over. Left set, it would open an editor on
+  // the next unrelated re-render.
+  pending_path.value = null;
   const target = editableTarget(event);
   // The click already places the caret; focusing again would move it to the start.
   if (target) startEditing(target, false);
+};
+
+/** Open the marker a click was heading for when the fragment was rebuilt out from under it. */
+const openPendingMarker = () => {
+  const path = pending_path.value;
+  pending_path.value = null;
+  if (!path || !editing.value) return;
+  const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
+  if (marker) startEditing(marker, true);
 };
 
 /**
@@ -279,6 +327,7 @@ watch(
     // left the toolbar floating over content it could no longer format, and the listener attached.
     stopWatchingSelection();
     void draw().catch(() => {});
+    openPendingMarker();
   },
   { flush: "post" },
 );
@@ -304,6 +353,7 @@ onBeforeUnmount(() => {
       v-if="fragment"
       ref="host"
       :class="['beat-fragment', editing ? 'beat-fragment--editable' : '']"
+      @mousedown="noteIntent"
       @click="beginEdit"
       @keydown="onKeydown"
       v-html="html"

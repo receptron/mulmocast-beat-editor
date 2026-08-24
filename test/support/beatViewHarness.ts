@@ -233,3 +233,8 @@ export const blurToNowhere = (view: MountedBeat): void => {
   const editing = view.host.querySelector<HTMLElement>('[contenteditable="true"]') ?? view.host.querySelector<HTMLElement>("[data-mulmo-path]");
   editing?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
 };
+
+/** Press the pointer down on a marker, which is what carries the intent before a commit. */
+export const pressDownOn = (view: MountedBeat, path: string): void => {
+  at(view, path).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
+};
