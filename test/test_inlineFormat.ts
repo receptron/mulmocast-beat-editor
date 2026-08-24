@@ -260,6 +260,10 @@ const TIDY_SHAPES: [string, string][] = [
   ["empty wrappers", "<strong></strong>".repeat(4000)],
   ["alternating colours", '<span class="text-d-primary">a</span><span class="text-d-danger">b</span>'.repeat(1000)],
   ["nested and adjacent", "<em><em>a</em></em><em>b</em>".repeat(600)],
+  // Aimed at `collapseNested` alone. Codex round 8 asked for it: without this shape, making
+  // only that pass search-and-restart stayed under the budget while `mergeAdjacent` carried
+  // the family. Measured — healthy 54ms, collapse-only regression 10600ms.
+  ["nested pairs", "<em><em>a</em></em>".repeat(2000)],
 ];
 
 test("tidyEditable is not super-linear on the shapes a paste can produce", () => {
