@@ -67,6 +67,22 @@ const emit = defineEmits<{ "update:script": [script: Record<string, unknown>] }>
 Write `withBeats(script, beats)` rather than `{ beats }` — the second drops `presentationStyle`, `slideParams`, and everything else the script carried, and nothing tells you it happened.
 
 `beatsOf` answers with an empty array for anything without a usable `beats` array, so it is safe to call before the script has loaded. It hands through **every** element, including one the editor cannot render: dropping one would round-trip as deletion the next time the host wrote the array back.
+### Embedding in a narrow host
+
+`BeatListEditor` reflows on its **own** width, not the window's, so a host that puts it in a card or a split pane declares nothing. Below `48rem` the editing pane moves under the beat list and takes the full width; above it, the two sit side by side.
+
+Above the breakpoint the pane's width is a token:
+
+```css
+.my-host { --beat-editor-pane-width: 20rem; } /* default: 24rem */
+```
+
+Measured in a browser at a 600px-wide host: the beat preview went from 156px to 540px.
+
+The token is a raw CSS escape hatch, so give it a **positive length**. Measured, in a 1000px
+host: `0` leaves a 33px strip of padding, `100%` starves the list to 32px and overflows, and an
+invalid value (`-5rem`, `banana`) drops the declaration so the pane falls back to `width: auto`
+and sizes to its content — not to the stacked `w-full`.
 
 ### Register your own beat editor
 
@@ -195,6 +211,11 @@ your build never generates `text-[60px]` — a beat renders unstyled with no err
 It contains **no preflight**: a component library should not reset your page. The typography a
 markdown beat expects is restored inside `.beat-fragment` at runtime, so a beat looks the same
 whether or not your app runs preflight.
+
+**Your page does need `box-sizing: border-box`**, which Tailwind's own preflight provides — and
+if you are already running Tailwind, you have it. Without it every utility that pairs a width
+with padding overflows by the padding: measured against the built library in a 600px host with
+no reset, ten elements ran past the edge and the editing pane came out 632px wide.
 
 ### Swapping an editor
 
