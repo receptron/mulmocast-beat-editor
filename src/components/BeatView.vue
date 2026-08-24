@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, shallowRef, toRaw, watch } from "vue";
 import { beatToHtml, type BeatHtmlFragment, type MulmoBeat } from "mulmocast/browser";
 import type { EditableBeat } from "../beatHelpers";
 import { driveRuntimes, releaseRuntimes } from "../beatRuntime";
@@ -196,14 +196,18 @@ const startEditing = (target: HTMLElement, focusIt: boolean) => {
 const pending_path = ref<string | null>(null);
 
 /**
- * The intent, once a commit has actually happened and a rebuild is therefore coming.
+ * The intent, tied to the beat the commit emitted.
  *
  * Promoted from `pending_path` inside the commit rather than read straight from it: a press
- * that never became a click — a drag away, a right-button press — leaves the pending path set,
- * and consuming that directly meant the NEXT unrelated re-render opened a field nobody asked
- * for. Measured, that is exactly what happened.
+ * that never became a click leaves the pending path set, and consuming that directly meant the
+ * next unrelated re-render opened a field nobody asked for.
+ *
+ * Carrying the beat as well as the path is what stops it landing on the WRONG one. A path is
+ * just a string, and another slide has a `subtitle` too — measured, a replacement that was not
+ * the emitted beat spent the intent all the same. `shallowRef`, because a `ref` would wrap the
+ * beat in a proxy and the identity comparison would never match.
  */
-const carried_path = ref<string | null>(null);
+const carried = shallowRef<{ path: string; beat: EditableBeat } | null>(null);
 
 /** Only the primary button opens a field. A right-click is a context menu, not an edit. */
 const PRIMARY_BUTTON = 0;
@@ -224,11 +228,19 @@ const beginEdit = (event: MouseEvent) => {
 };
 
 /** Open the marker a click was heading for when the fragment was rebuilt out from under it. */
+/** The intent belongs to this render only if this render is of the beat it was made for. */
+const intentForThisRender = (): { path: string; beat: EditableBeat } | null => {
+  const intent = carried.value;
+  carried.value = null;
+  // `toRaw`, because the beat the commit built is a plain object and the one a host hands back
+  // through a `ref` is a reactive proxy of it — comparing those directly never matches.
+  return intent && intent.beat === toRaw(props.beat) ? intent : null;
+};
+
 const openPendingMarker = () => {
-  const path = carried_path.value;
-  carried_path.value = null;
-  if (!path || !editing.value) return;
-  const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${path}"]`);
+  const intent = intentForThisRender();
+  if (!intent || !editing.value) return;
+  const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${intent.path}"]`);
   if (marker) startEditing(marker, true);
 };
 
@@ -267,6 +279,13 @@ const endEditing = (target: HTMLElement) => {
   stopWatchingSelection();
 };
 
+/** Hand a pending press over to the render the write is about to cause, if there is one. */
+const carryIntent = (next: EditableBeat | null) => {
+  const intent = pending_path.value;
+  pending_path.value = null;
+  carried.value = next && intent ? { path: intent, beat: next } : null;
+};
+
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
@@ -286,16 +305,8 @@ const commit = (event: FocusEvent) => {
   const html = target.innerHTML;
   endEditing(target);
   const next = applyInlineEdit(props.beat, path, html, surface.value.paths);
-  carried_path.value = next ? pending_path.value : null;
-  pending_path.value = null;
-  if (!next) return;
-  emit("update", next);
-  // The rebuild this is waiting for happens inside Vue's flush, which is already queued by the
-  // time this runs. A host that ignores the update produces no rebuild at all — measured, the
-  // intent then sat there and a later unrelated one opened the field.
-  queueMicrotask(() => {
-    carried_path.value = null;
-  });
+  carryIntent(next);
+  if (next) emit("update", next);
 };
 
 /** Enter or Space on a focused-but-not-yet-editing element is the keyboard equivalent of a click. */

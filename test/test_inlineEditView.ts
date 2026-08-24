@@ -639,3 +639,24 @@ test("an update the host ignores leaves no intent to spend later", async () => {
   view.unmount();
   assert.equal(opened, 0, "nothing opens on a re-render the press had nothing to do with");
 });
+
+test("an intent cannot land on a different beat that happens to have the same path", async () => {
+  // Codex round 2. A path is just a string, and every slide has a `subtitle`. Carrying only
+  // the path meant a replacement that was NOT the emitted beat spent the intent all the same.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  pressDownOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  assert.equal(view.emitted.length, 1, "the edit was offered");
+
+  // The host applies something else entirely — a different beat object, same paths.
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Another", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the press belonged to the beat that is no longer here");
+});
