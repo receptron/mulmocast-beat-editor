@@ -411,3 +411,24 @@ test("focus bouncing from a toolbar button back to the text does not commit", as
   assert.equal(emitted, 0, "nothing is committed");
   assert.equal(stillShowing, true, "and the toolbar stays up");
 });
+
+test("a beat replaced mid-edit cannot write the old element's html into the new one", async () => {
+  // Codex round 5. Cleanup cleared the toolbar and the listener but not the element the commit
+  // path trusts, so a later blur wrote the DETACHED node's html into the current beat —
+  // measured, `title: "STALE"` landed on a beat whose title was already "Replaced".
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "STALE");
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced", subtitle: "NewSub" } } });
+  await settle();
+  await settle();
+  const marker = view.host.querySelector<HTMLElement>('[data-mulmo-path="title"]');
+  const win = view.host.ownerDocument.defaultView;
+  if (!marker || !win) throw new Error("setup");
+  marker.dispatchEvent(new win.FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+  await settle();
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(emitted, 0, "the replaced beat is left alone");
+});

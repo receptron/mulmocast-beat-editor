@@ -173,6 +173,17 @@ const staysWithinThisEdit = (related: EventTarget | null): boolean => {
 const commit = (event: FocusEvent) => {
   const target = editing_element.value;
   if (!target || target.getAttribute("contenteditable") !== "true") return;
+  // Never write from an element that has left the document.
+  //
+  // Clearing the ref wherever an edit ends would work too, and both together is worse than
+  // either: neither can be break-checked, because each alone is sufficient. This one is kept
+  // because it is the invariant of the WRITE path and holds for an exit nobody has written yet.
+  // Measured without it: replacing the beat mid-edit and then blurring the new marker wrote the
+  // old element's html — `title: "STALE"` — into the current beat.
+  if (!target.isConnected) {
+    editing_element.value = null;
+    return;
+  }
   // Only a hop between the text and its own toolbar is not the end of an edit. Tabbing into the
   // toolbar must not commit, or the toolbar unmounts before a keyboard user can press anything;
   // and an action bounces focus text -> button, which must not commit either.
