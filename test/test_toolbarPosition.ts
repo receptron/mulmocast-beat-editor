@@ -35,3 +35,16 @@ test("placeToolbar: a viewport smaller than the toolbar still yields a drawable 
   const { x, y } = placeToolbar(rect(10, 10, 20, 10), TOOLBAR, { width: 100, height: 20 });
   assert.ok(x >= 0 && y >= 0, `x=${x} y=${y}`);
 });
+
+test("placeToolbar: a selection below the fold does not put the toolbar off-screen", () => {
+  // The "above the selection" branch was unclamped, which only shows once the toolbar follows
+  // scrolling: measured, it tracked a selection to y=702 in a 700px viewport and vanished.
+  const { y } = placeToolbar(rect(500, 742, 100, 20), TOOLBAR, { width: 1280, height: 700 });
+  assert.ok(y >= 0 && y + TOOLBAR.height <= 700, `y=${y} must keep the toolbar on screen`);
+  assert.equal(y, 700 - TOOLBAR.height, "pinned to the bottom edge");
+});
+
+test("placeToolbar: a selection above the top edge is handled too", () => {
+  const { y } = placeToolbar(rect(500, -50, 100, 20), TOOLBAR, VIEWPORT);
+  assert.ok(y >= 0, `y=${y}`);
+});

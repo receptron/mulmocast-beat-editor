@@ -60,7 +60,32 @@ dom.window.document.removeEventListener = (
   removeFromDocument(type, listener, options);
 };
 
-/** How many listeners of `type` are attached to the harness document right now. */
+const addToWindow: EventTarget["addEventListener"] = dom.window.addEventListener.bind(dom.window);
+const removeFromWindow: EventTarget["removeEventListener"] = dom.window.removeEventListener.bind(dom.window);
+
+const countingWindowAdd: EventTarget["addEventListener"] = (type, listener, options) => {
+  if (listener) {
+    const forType = documentListeners.get(type) ?? new Set<EventListenerOrEventListenerObject>();
+    forType.add(listener);
+    documentListeners.set(type, forType);
+  }
+  addToWindow(type, listener, options);
+};
+
+const countingWindowRemove: EventTarget["removeEventListener"] = (type, listener, options) => {
+  if (listener) documentListeners.get(type)?.delete(listener);
+  removeFromWindow(type, listener, options);
+};
+
+dom.window.addEventListener = countingWindowAdd;
+dom.window.removeEventListener = countingWindowRemove;
+
+/**
+ * How many listeners of `type` are attached to the harness document or window right now.
+ *
+ * Window as well as document, because a component that watches `resize` and forgets to detach
+ * it leaks exactly as invisibly as one that forgets `selectionchange`.
+ */
 export const documentListenerCount = (type: string): number => documentListeners.get(type)?.size ?? 0;
 
 const scoped: Record<string, unknown> = dom.window;

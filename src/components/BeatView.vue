@@ -112,10 +112,23 @@ const repositionToolbar = () => {
   toolbar.value = placeToolbar(rect, TOOLBAR_BOX, { width: window.innerWidth, height: window.innerHeight });
 };
 
-const startWatchingSelection = () => document.addEventListener("selectionchange", repositionToolbar);
+/**
+ * The toolbar follows the selection, and the selection moves for more reasons than editing.
+ *
+ * `scroll` in the CAPTURE phase, because a scroll event from the beat list does not bubble —
+ * measured, scrolling the list 300px moved the selection 300px and left the toolbar exactly
+ * where it was, floating over unrelated content with its buttons still live.
+ */
+const startWatchingSelection = () => {
+  document.addEventListener("selectionchange", repositionToolbar);
+  document.addEventListener("scroll", repositionToolbar, true);
+  window.addEventListener("resize", repositionToolbar);
+};
 
 const stopWatchingSelection = () => {
   document.removeEventListener("selectionchange", repositionToolbar);
+  document.removeEventListener("scroll", repositionToolbar, true);
+  window.removeEventListener("resize", repositionToolbar);
   toolbar.value = null;
 };
 

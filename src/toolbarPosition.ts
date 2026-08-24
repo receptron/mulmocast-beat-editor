@@ -22,8 +22,14 @@ const GAP_PX = 6;
 export const placeToolbar = (selection: Rect, toolbar: ToolbarBox, viewport: Viewport): Placement => {
   const above = selection.top - toolbar.height - GAP_PX;
   const below = selection.bottom + GAP_PX;
-  const y = above >= 0 ? above : Math.min(below, Math.max(0, viewport.height - toolbar.height));
+  // Clamped on BOTH branches. "Above the selection" is off-screen too when the selection is
+  // below the fold — measured after the toolbar started following scrolls: it tracked a
+  // selection down to y=702 in a 700px viewport and disappeared with its buttons still live.
+  const y = onScreen(above >= 0 ? above : below, toolbar.height, viewport.height);
   const centred = selection.left + selection.width / 2 - toolbar.width / 2;
-  const x = Math.min(Math.max(0, centred), Math.max(0, viewport.width - toolbar.width));
+  const x = onScreen(centred, toolbar.width, viewport.width);
   return { x, y };
 };
+
+/** Keep an edge inside the viewport, giving up on the near edge when the box does not fit. */
+const onScreen = (start: number, size: number, limit: number): number => Math.min(Math.max(0, start), Math.max(0, limit - size));

@@ -278,11 +278,15 @@ test("the formatting toolbar appears for a selection inside the beat being edite
 });
 
 test("committing leaves the document as it was found", async () => {
-  // A listener left behind is invisible until something else goes wrong, so it is asserted.
+  // A listener left behind is invisible until something else goes wrong, so it is asserted —
+  // and so is its presence, or "never attached" would look the same as "cleaned up".
   const view = await mountBeatView(slide(), { editable: true });
   clickPath(view, "title");
   selectWithin(view, "title");
   await settle();
+  // The toolbar follows the selection, and the selection moves when anything scrolls or the
+  // window resizes — measured, scrolling the list 300px left the toolbar exactly where it was.
+  ["selectionchange", "scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 1, `editing watches ${type}`));
   blurActive(view);
   await settle();
   const shown = toolbarOf(view);
@@ -290,6 +294,7 @@ test("committing leaves the document as it was found", async () => {
   view.unmount();
   assert.equal(shown, null, "committing puts the toolbar away");
   assert.equal(listeners, 0, "and detaches the listener");
+  ["scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 0, `no ${type} listener either`));
 });
 
 test("a read-only beat never shows the toolbar, however you select in it", async () => {
@@ -443,7 +448,7 @@ test("a beat replaced mid-edit cannot write the old element's html into the new 
 const assertEditingIsFullyOver = (view: { host: HTMLElement }): void => {
   assert.equal(view.host.querySelectorAll('[contenteditable="true"]').length, 0, "nothing is left editable");
   assert.equal(view.host.parentElement?.querySelector('[role="toolbar"]') ?? null, null, "the toolbar is gone");
-  assert.equal(documentListenerCount("selectionchange"), 0, "and the listener with it");
+  ["selectionchange", "scroll", "resize"].forEach((type) => assert.equal(documentListenerCount(type), 0, `no ${type} listener is left behind`));
 };
 
 test("a beat replaced by one that renders identically still ends the edit", async () => {
