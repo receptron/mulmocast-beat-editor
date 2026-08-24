@@ -79,6 +79,11 @@ Above the breakpoint the pane's width is a token:
 
 Measured in a browser at a 600px-wide host: the beat preview went from 156px to 540px.
 
+The token is a raw CSS escape hatch, so give it a **positive length**. Measured, in a 1000px
+host: `0` leaves a 33px strip of padding, `100%` starves the list to 32px and overflows, and an
+invalid value (`-5rem`, `banana`) drops the declaration so the pane falls back to `width: auto`
+and sizes to its content — not to the stacked `w-full`.
+
 ### Register your own beat editor
 
 Which editor opens for a beat is decided by one list. Pass your own and you can replace what ships, or add a second way into a type that already has one — which is how `chart` gets both a form and a raw-JSON view.
@@ -206,6 +211,11 @@ your build never generates `text-[60px]` — a beat renders unstyled with no err
 It contains **no preflight**: a component library should not reset your page. The typography a
 markdown beat expects is restored inside `.beat-fragment` at runtime, so a beat looks the same
 whether or not your app runs preflight.
+
+**Your page does need `box-sizing: border-box`**, which Tailwind's own preflight provides — and
+if you are already running Tailwind, you have it. Without it every utility that pairs a width
+with padding overflows by the padding: measured against the built library in a 600px host with
+no reset, ten elements ran past the edge and the editing pane came out 632px wide.
 
 ### Swapping an editor
 
