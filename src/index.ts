@@ -17,6 +17,7 @@ export { readChartForm, writeChartForm, parseNumbers, CHART_TYPES } from "./edit
 export type { ChartForm, ChartSeries } from "./editors/chartData";
 export { sanitizeFragment } from "./sanitize";
 export { BEAT_TYPES, makeBeat, beatType, beatImage } from "./beatHelpers";
+export { beatsOf, withBeats } from "./scriptHelpers";
 export type { EditableBeat, BeatType } from "./beatHelpers";
 
 export { defaultTheme, sampleDeck } from "./data/sampleDeck";

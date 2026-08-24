@@ -36,13 +36,15 @@ const NEW_BEAT: Record<BeatType, () => Record<string, unknown>> = {
 export const makeBeat = (type: BeatType): EditableBeat => ({ text: "", image: NEW_BEAT[type]() });
 
 export const beatType = (beat: EditableBeat): string => {
-  if (!isRecord(beat.image)) return "(no image)";
+  // The beat itself is checked, not just its image: `beatsOf` hands through whatever the
+  // host's script held, and a null element there used to throw on the `.image` read.
+  if (!isRecord(beat) || !isRecord(beat.image)) return "(no image)";
   const type = beat.image.type;
   return typeof type === "string" ? type : "(no type)";
 };
 
 /** Read `beat.image` as a record. Returns an empty one rather than throwing on a malformed beat. */
-export const beatImage = (beat: EditableBeat): Record<string, unknown> => (isRecord(beat.image) ? beat.image : {});
+export const beatImage = (beat: EditableBeat): Record<string, unknown> => (isRecord(beat) && isRecord(beat.image) ? beat.image : {});
 
 /** A beat with one `image` field replaced. Returns a new object; nothing is mutated. */
 export const withImageField = (beat: EditableBeat, field: string, value: unknown): EditableBeat => ({

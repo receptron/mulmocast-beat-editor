@@ -11,12 +11,12 @@ import type { Component } from "vue";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const OUT_DIR = "node_modules/.tmp/editor-harness";
 
-export type EditorName = "Inspector" | "ContentBlockEditor" | "BeatView";
+export type EditorName = "Inspector" | "ContentBlockEditor" | "BeatView" | "BeatListEditor";
 type Editors = Record<EditorName, Component>;
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
 const isEditors = (value: unknown): value is Editors =>
-  isRecord(value) && isRecord(value["Inspector"]) && isRecord(value["ContentBlockEditor"]) && isRecord(value["BeatView"]);
+  isRecord(value) && isRecord(value["Inspector"]) && isRecord(value["ContentBlockEditor"]) && isRecord(value["BeatView"]) && isRecord(value["BeatListEditor"]);
 
 /**
  * The editors are SFCs, so they have to be compiled before they can be mounted. `ssrLoadModule`
