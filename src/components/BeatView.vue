@@ -54,6 +54,9 @@ const html = computed(() => surface.value.html);
 
 const host = ref<HTMLElement | null>(null);
 
+/** This beat's own subtree, so another beat's markup cannot be mistaken for our toolbar. */
+const shell = ref<HTMLElement | null>(null);
+
 /** The element being edited, remembered because a commit can be triggered from the toolbar. */
 const editing_element = ref<HTMLElement | null>(null);
 
@@ -151,11 +154,20 @@ const beginEdit = (event: MouseEvent) => {
  * is the single place an edit lands — and `applyInlineEdit` answers null when nothing changed,
  * which is what stops an ordinary click-away from rebuilding the fragment.
  */
-/** Focus landing on this beat's toolbar, or coming back from it to the element being edited. */
+/**
+ * Focus landing on THIS beat's toolbar, or coming back from it to the element being edited.
+ *
+ * Scoped to this component's own subtree, not to any `[role="toolbar"]` on the page: an
+ * `html_tailwind` beat renders author markup verbatim, and one carrying that role would
+ * otherwise suppress a commit happening in a different beat — measured, the author can put it
+ * there (a `slide` beat cannot: 0 of 3 attempts survive the renderer and the sanitizer).
+ *
+ * `contains` rather than identity, so a descendant of the edited element is still inside it.
+ */
 const staysWithinThisEdit = (related: EventTarget | null): boolean => {
   if (!(related instanceof Element)) return false;
-  // `contains` rather than identity: a descendant of the edited element is still inside it.
-  return related.closest('[role="toolbar"]') !== null || (editing_element.value?.contains(related) ?? false);
+  const ownToolbar = (shell.value?.contains(related) ?? false) && related.closest('[role="toolbar"]') !== null;
+  return ownToolbar || (editing_element.value?.contains(related) ?? false);
 };
 
 const commit = (event: FocusEvent) => {
@@ -244,7 +256,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div @focusout="commit">
+  <div ref="shell" @focusout="commit">
     <component :is="'style'" v-if="fragment?.css">{{ fragment.css }}</component>
     <!--
       The fragment is sanitized above. `beatToHtml` documents that raw HTML, event handlers

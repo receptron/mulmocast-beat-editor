@@ -209,3 +209,21 @@ export const focusOutTo = (view: MountedBeat, path: string): void => {
   const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
   from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
 };
+
+/** Focus something outside this beat that merely claims `role="toolbar"`. */
+export const focusOutToForeignToolbar = (view: MountedBeat): void => {
+  const from = view.host.querySelector<HTMLElement>('[contenteditable="true"]');
+  const foreign = dom.window.document.createElement("div");
+  foreign.setAttribute("role", "toolbar");
+  const button = dom.window.document.createElement("button");
+  foreign.appendChild(button);
+  dom.window.document.body.appendChild(foreign);
+  from?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: button }));
+  foreign.remove();
+};
+
+/** The bounce a toolbar action causes: focus leaves the button back to the text being edited. */
+export const bounceFocusBackTo = (view: MountedBeat, path: string): void => {
+  const button = view.host.parentElement?.querySelector<HTMLElement>('[role="toolbar"] button');
+  button?.dispatchEvent(new dom.window.FocusEvent("focusout", { bubbles: true, relatedTarget: at(view, path) }));
+};

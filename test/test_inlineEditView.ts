@@ -17,6 +17,8 @@ import {
   toolbarButtons,
   tabTo,
   focusOutTo,
+  focusOutToForeignToolbar,
+  bounceFocusBackTo,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -377,4 +379,35 @@ test("moving to another marker in the same beat commits the first edit", async (
   view.unmount();
   assert.equal(emitted?.image.slide.title, "T-EDITED", "the first edit is not dropped");
   assert.equal(stillEditable, 0, "and the first element stops being editable");
+});
+
+test("another element claiming role=toolbar does not suppress this beat's commit", async () => {
+  // An `html_tailwind` beat renders author markup verbatim, and the author can put
+  // `role="toolbar"` in it — measured. Checking for any toolbar on the page rather than this
+  // beat's own would let that markup swallow an edit happening somewhere else.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "T-EDITED");
+  focusOutToForeignToolbar(view);
+  await settle();
+  const emitted = view.emitted.at(-1) as { image: { slide: Record<string, unknown> } } | undefined;
+  view.unmount();
+  assert.equal(emitted?.image.slide.title, "T-EDITED", "the edit is committed all the same");
+});
+
+test("focus bouncing from a toolbar button back to the text does not commit", async () => {
+  // Applying a format re-selects inside the contenteditable, which moves focus off the button
+  // and back to the text. Treating that as the end of the edit would commit after every press
+  // and unmount the toolbar under the user's finger.
+  const view = await mountBeatView(slide(), { editable: true });
+  clickPath(view, "title");
+  selectWithin(view, "title");
+  await settle();
+  bounceFocusBackTo(view, "title");
+  await settle();
+  const stillShowing = toolbarOf(view) !== null;
+  const emitted = view.emitted.length;
+  view.unmount();
+  assert.equal(emitted, 0, "nothing is committed");
+  assert.equal(stillShowing, true, "and the toolbar stays up");
 });
