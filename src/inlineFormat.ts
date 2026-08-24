@@ -24,6 +24,32 @@ export const colorFormat = (color: AccentColor): InlineFormat => ({ tag: "span",
 
 const INLINE_TAGS = new Set(["strong", "em", "b", "i", "span"]);
 
+/**
+ * The colour a format paints, or null when it paints none.
+ *
+ * Deck's markup has one colour slot and no nesting: `{warning:a{primary:b}c}` renders its own
+ * braces as text. Emphasis shares that slot rather than sitting beside it — `*…*` cannot be
+ * written next to a word character, so `htmlToMarkup` stores such a run as `{warning:…}`, and a
+ * value cannot say afterwards which of the two produced it. Treating them as one format is what
+ * the stored form already does.
+ */
+const colorOf = (format: InlineFormat): string | null => /\btext-d-([a-z]+)\b/.exec(format.className ?? "")?.[1] ?? null;
+
+const formatOf = (element: Element): InlineFormat => ({
+  tag: element.tagName.toLowerCase(),
+  className: element.getAttribute("class") ?? undefined,
+});
+
+type FormatMatcher = (format: InlineFormat) => boolean;
+
+/** Formats that occupy the same slot as `format`: the same colour, whatever tag carries it. */
+const sameSlot =
+  (format: InlineFormat): FormatMatcher =>
+  (other) => {
+    const color = colorOf(format);
+    return color === null ? other.tag === format.tag && (other.className ?? "") === (format.className ?? "") : colorOf(other) === color;
+  };
+
 const isElement = (node: Node | null | undefined): node is Element => node?.nodeType === Node.ELEMENT_NODE;
 
 /** An element this editor treats as formatting, as opposed to structure a layout emitted. */
@@ -77,8 +103,17 @@ export const tidyEditable = (root: HTMLElement): void => {
  */
 const collapseNested = (root: HTMLElement): void => {
   formattingIn(root).forEach((element) => {
-    const parent = element.parentElement;
-    if (parent && parent !== root && isFormatting(parent) && sameKind(element, parent)) unwrapElement(element);
+    if (!element.isConnected) return;
+    for (let parent = element.parentElement; parent && parent !== root; parent = parent.parentElement) {
+      // Any ancestor of the same kind, not just the direct parent: a `<strong>` reached through a
+      // colour span adds nothing on screen, and the value it produces — `**a{c:**b**}**` — is one
+      // deck mis-parses, because its bold pass runs before its colour pass and does not see the
+      // braces.
+      if (isFormatting(parent) && sameKind(element, parent)) {
+        unwrapElement(element);
+        return;
+      }
+    }
   });
 };
 
@@ -92,14 +127,16 @@ const mergeAdjacent = (root: HTMLElement): void => {
   });
 };
 
-/** The nearest ancestor within `root` that is already this format, if the selection is inside one. */
-const enclosingFormat = (node: Node | null, format: InlineFormat, root: HTMLElement): Element | null => {
+/** The nearest ancestor within `root` already holding this format's slot, if there is one. */
+const enclosingFormat = (node: Node | null, matches: FormatMatcher, root: HTMLElement): Element | null => {
   for (let current: Node | null = node; current && current !== root; current = current.parentNode) {
-    if (!isElement(current)) continue;
-    if (current.tagName.toLowerCase() === format.tag && (current.getAttribute("class") ?? "") === (format.className ?? "")) return current;
+    if (isElement(current) && isFormatting(current) && matches(formatOf(current))) return current;
   }
   return null;
 };
+
+/** A formatting ancestor within `root` that paints a colour, if the node sits inside one. */
+const enclosingColor = (node: Node | null, root: HTMLElement): Element | null => enclosingFormat(node, (format) => colorOf(format) !== null, root);
 
 const wrapRange = (range: Range, format: InlineFormat): Element => {
   const wrapper = range.startContainer.ownerDocument?.createElement(format.tag) ?? document.createElement(format.tag);
@@ -181,23 +218,42 @@ export const toggleFormat = (selection: Selection | null, format: InlineFormat):
   const found = formattableSelection(selection);
   if (!found || !selection) return false;
   const { range, root } = found;
+  const matches = sameSlot(format);
 
-  if (enclosingFormat(range.startContainer, format, root) && enclosingFormat(range.endContainer, format, root)) {
-    removeFormat(selection, range, root, format);
+  if (enclosingFormat(range.startContainer, matches, root) && enclosingFormat(range.endContainer, matches, root)) {
+    removeFormat(selection, range, root, matches);
     return true;
   }
 
   const wrapper = wrapRange(range, format);
+  if (colorOf(format) !== null) supersedeColor(wrapper, root);
   tidyEditable(root);
   selectContentsOf(selection, wrapper);
   return true;
 };
 
+/**
+ * Leave `wrapper` as the only colour over its text, keeping every other format around it.
+ *
+ * A colour applied over a coloured run nests, and the value that comes back — `{a:x{b:y}z}` —
+ * is one deck cannot parse, so its braces reach the screen as text and the next edit formats
+ * those. On screen the inner colour already won, so dropping the outer one changes nothing a
+ * user can see.
+ */
+const supersedeColor = (wrapper: Element, root: HTMLElement): void => {
+  [...wrapper.querySelectorAll([...INLINE_TAGS].join(","))]
+    .filter((element) => isFormatting(element) && colorOf(formatOf(element)) !== null)
+    .forEach(unwrapElement);
+  if (!enclosingColor(wrapper.parentElement, root)) return;
+  const passed = liftPast(wrapper, root);
+  rewrapContents(
+    wrapper,
+    passed.filter((format) => colorOf(format) === null),
+  );
+};
+
 /** A span this module can recognise and that `isFormatting` will not: it is scaffolding. */
 const CLEAR_MARKER: InlineFormat = { tag: "span", className: "mulmo-clearing" };
-
-const isFormat = (element: Element, format: InlineFormat): boolean =>
-  element.tagName.toLowerCase() === format.tag && (element.getAttribute("class") ?? "") === (format.className ?? "");
 
 /**
  * Move an element up past its formatting ancestors, splitting each one around it, and answer
@@ -208,20 +264,16 @@ const isFormat = (element: Element, format: InlineFormat): boolean =>
  * and re-inserting text left the DOM byte-identical, and un-bolding just `ol` inside it
  * removed the bold from `bold` entirely rather than leaving `**b**ol**d**`.
  *
- * What keeps the OTHER formats is `rewrapContents`, not this. Stopping at the match is only
- * about work: measured across four nesting shapes, removing the `break` leaves the output
- * byte-identical and merely splits every ancestor above the match and puts it back again.
+ * What keeps the OTHER formats is `rewrapContents`, not this.
  */
-const liftPast = (element: Element, root: HTMLElement, until: (ancestor: Element) => boolean): InlineFormat[] => {
+const liftPast = (element: Element, root: HTMLElement): InlineFormat[] => {
   const passed: InlineFormat[] = [];
   for (let parent = element.parentElement; parent && parent !== root && isFormatting(parent); parent = element.parentElement) {
-    const matched = until(parent);
-    passed.push({ tag: parent.tagName.toLowerCase(), className: parent.getAttribute("class") ?? undefined });
+    passed.push(formatOf(parent));
     const trailing = parent.cloneNode(false);
     while (element.nextSibling) trailing.appendChild(element.nextSibling);
     parent.after(element);
     if (trailing.hasChildNodes()) element.after(trailing);
-    if (matched) break;
   }
   return passed;
 };
@@ -233,10 +285,8 @@ const liftPast = (element: Element, root: HTMLElement, until: (ancestor: Element
  * boundary lands its marker at the top, with the old wrappers still inside it — measured, both
  * clearing and un-bolding across `<strong>bo</strong><em>ld</em>` left the DOM untouched.
  */
-const stripInside = (marker: Element, format: InlineFormat | null): void => {
-  [...marker.querySelectorAll([...INLINE_TAGS].join(","))]
-    .filter((element) => isFormatting(element) && (format === null || isFormat(element, format)))
-    .forEach(unwrapElement);
+const stripInside = (marker: Element, matches: FormatMatcher): void => {
+  [...marker.querySelectorAll([...INLINE_TAGS].join(","))].filter((element) => isFormatting(element) && matches(formatOf(element))).forEach(unwrapElement);
 };
 
 /** Put `formats` back around the element's contents, innermost first. */
@@ -249,21 +299,22 @@ const rewrapContents = (element: Element, formats: InlineFormat[]): void => {
   });
 };
 
-const sameFormat = (a: InlineFormat, b: InlineFormat): boolean => a.tag === b.tag && (a.className ?? "") === (b.className ?? "");
-
 /**
- * Take the selection out of `format`, keeping every other format it sits in.
+ * Take the selection out of every format `matches` answers to, keeping the ones it does not.
  *
  * The marker is scaffolding: it gives the run an identity to lift and split around, and is
  * replaced by its own contents at the end.
  */
-const removeFormat = (selection: Selection, range: Range, root: HTMLElement, format: InlineFormat | null): void => {
+const removeFormat = (selection: Selection, range: Range, root: HTMLElement, matches: FormatMatcher): void => {
   const from = characterOffset(root, range.startContainer, range.startOffset);
   const to = characterOffset(root, range.endContainer, range.endOffset);
   const marker = wrapRange(range, CLEAR_MARKER);
-  stripInside(marker, format);
-  const passed = liftPast(marker, root, (ancestor) => format !== null && isFormat(ancestor, format));
-  rewrapContents(marker, format === null ? [] : passed.filter((passedFormat) => !sameFormat(passedFormat, format)));
+  stripInside(marker, matches);
+  const passed = liftPast(marker, root);
+  rewrapContents(
+    marker,
+    passed.filter((format) => !matches(format)),
+  );
   marker.replaceWith(...marker.childNodes);
   tidyEditable(root);
   selectCharacters(selection, root, from, to);
@@ -273,6 +324,6 @@ const removeFormat = (selection: Selection, range: Range, root: HTMLElement, for
 export const clearFormat = (selection: Selection | null): boolean => {
   const found = formattableSelection(selection);
   if (!found || !selection) return false;
-  removeFormat(selection, found.range, found.root, null);
+  removeFormat(selection, found.range, found.root, () => true);
   return true;
 };

@@ -227,8 +227,12 @@ test("htmlToMarkup: span without text-d class is stripped", () => {
   assert.equal(htmlToMarkup('<span class="something-else">x</span>'), "x");
 });
 
-test("htmlToMarkup: nested strong inside em", () => {
-  assert.equal(htmlToMarkup('<em class="text-d-warning"><strong>X</strong></em>'), "***X***");
+test("htmlToMarkup: nested strong inside em takes the brace form, which cannot be misread", () => {
+  // `***X***` also renders as X, but only because deck's bold pass happens to leave a `*X*` its
+  // em pass can still take. A bold tag beside an emphasis is one character away from `****`,
+  // which deck reads as a bold delimiter — so the converter stops emitting `*…*` there. Both
+  // forms render bold amber.
+  assert.equal(htmlToMarkup('<em class="text-d-warning"><strong>X</strong></em>'), "{warning:**X**}");
 });
 
 test("htmlToMarkup: nested span color inside strong", () => {
