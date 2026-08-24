@@ -22,6 +22,7 @@ import {
   blurToNowhere,
   type MountedBeat,
   pressDownOn,
+  rightPressOn,
 } from "./support/beatViewHarness";
 import { documentListenerCount } from "./support/domGlobals";
 import { withEditingAffordances } from "../src/inlineEdit";
@@ -579,4 +580,50 @@ test("Enter leaves the caret at the END of the field", async () => {
   view.unmount();
   assert.equal(at_end, true, "the caret is at the end of the field");
   assert.equal(collapsed, true, "and it is a caret, not a selection — typing must not replace the text");
+});
+
+test("a right-click records no intent", async () => {
+  // Codex round 1. A right-button press on another marker still moves focus, so the edit
+  // commits and the fragment rebuilds — and the field the context menu was aimed at would
+  // open behind it.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  setEditedHtml(view, "title", "FIRST");
+  rightPressOn(view, "subtitle");
+  focusOutTo(view, "subtitle");
+  await settle();
+  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
+  if (emitted) view.replaceBeat(emitted);
+  await settle();
+  await settle();
+  const opened = view.host.querySelectorAll("[contenteditable]").length;
+  view.unmount();
+  assert.equal(emitted !== undefined, true, "the edit still commits");
+  assert.equal(opened, 0, "but nothing opens");
+});
+
+test("Escape abandons a press on another marker too", async () => {
+  // Otherwise the press sits there and the next commit anywhere carries it. The later edit is
+  // started with the KEYBOARD on purpose: a click would clear the intent by itself, so a test
+  // that clicks cannot tell whether Escape did anything.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide());
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  pressOn(view, "title", "Escape");
+  await settle();
+
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  const emitted = view.emitted.at(-1) as Record<string, unknown> | undefined;
+  if (!emitted) throw new Error("the later edit should have committed");
+  view.replaceBeat(emitted);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
 });

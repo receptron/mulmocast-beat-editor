@@ -238,3 +238,8 @@ export const blurToNowhere = (view: MountedBeat): void => {
 export const pressDownOn = (view: MountedBeat, path: string): void => {
   at(view, path).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true }));
 };
+
+/** Press a non-primary button on a marker, as a right-click does. */
+export const rightPressOn = (view: MountedBeat, path: string): void => {
+  at(view, path).dispatchEvent(new dom.window.MouseEvent("mousedown", { bubbles: true, button: 2 }));
+};

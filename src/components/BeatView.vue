@@ -205,8 +205,11 @@ const pending_path = ref<string | null>(null);
  */
 const carried_path = ref<string | null>(null);
 
+/** Only the primary button opens a field. A right-click is a context menu, not an edit. */
+const PRIMARY_BUTTON = 0;
+
 const noteIntent = (event: MouseEvent) => {
-  if (!editing.value) return;
+  if (!editing.value || event.button !== PRIMARY_BUTTON) return;
   pending_path.value = editableTarget(event)?.getAttribute("data-mulmo-path") ?? null;
 };
 
@@ -303,6 +306,9 @@ const leaveEditing = (event: KeyboardEvent, target: HTMLElement): void => {
   } else if (event.key === "Escape") {
     event.preventDefault();
     target.innerHTML = htmlBeforeEdit.value;
+    // Escape abandons the whole interaction, including a press on another marker that has not
+    // become a click. Left set, the next commit anywhere would carry it and open that field.
+    pending_path.value = null;
     endEditing(target);
     target.blur();
   }
