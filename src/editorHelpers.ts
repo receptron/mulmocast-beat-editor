@@ -242,17 +242,23 @@ const INLINE_COLOR_KEYS = new Set(["primary", "accent", "success", "warning", "d
  * (no bold). Acceptable as a fallback since the alternative is a parse failure where the user
  * sees literal asterisks.
  */
-const emReplace = (match: string, _tag: string, inner: string, offset: number, full: string): string => {
-  const prevChar = full[offset - 1] ?? "";
-  const nextChar = full[offset + match.length] ?? "";
-  const isWord = (c: string) => /\w/.test(c);
-  const startsWithSpace = /^\s/.test(inner);
-  const endsWithSpace = /\s$/.test(inner);
-  if (isWord(prevChar) || isWord(nextChar) || startsWithSpace || endsWithSpace) {
-    return `{warning:${inner}}`;
-  }
-  return `*${inner}*`;
+const BOLD_TAG_BEFORE = /<\/?(?:strong|b)\b[^<>]*>$/i;
+const BOLD_TAG_AFTER = /^<\/?(?:strong|b)\b[^<>]*>/i;
+// A `*` beside the emphasis is as unusable as a word character: deck runs its bold pass first,
+// so `*a` + `**lpha**` reaches it as `*a****lpha*` and the `****` is read as a bold delimiter.
+const UNUSABLE_EDGE = /[\w*]/;
+
+/** Whether `*…*` would still be read as emphasis where this run sits. */
+const asteriskFormSurvives = (inner: string, before: string, after: string): boolean => {
+  if (UNUSABLE_EDGE.test(before.slice(-1)) || UNUSABLE_EDGE.test(after.slice(0, 1))) return false;
+  if (/^\s|\s$/.test(inner) || /^\*|\*$/.test(inner)) return false;
+  // A bold tag on either side becomes `**` in a later pass, which lands against this `*`. The
+  // neighbouring CHARACTER cannot see that yet — at this point it is still `<` or `>`.
+  return !BOLD_TAG_BEFORE.test(before) && !BOLD_TAG_AFTER.test(after);
 };
+
+const emReplace = (match: string, _tag: string, inner: string, offset: number, full: string): string =>
+  asteriskFormSurvives(inner, full.slice(0, offset), full.slice(offset + match.length)) ? `*${inner}*` : `{warning:${inner}}`;
 
 /**
  * One pass of `<…>` removal, as a forward scan rather than `/<[^>]+>/g`.
