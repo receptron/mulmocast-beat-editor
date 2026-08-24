@@ -74,3 +74,47 @@ test("a beats array carrying an element the editor cannot render still lists", a
   assert.ok(text.includes("no image"), "an unrenderable beat is labelled rather than crashing the list");
   assert.ok(cards > 0 || text.length > 0, "the list rendered");
 });
+
+/** A script shaped like a host's: beats, plus the fields a careless write-back would drop. */
+const hostScript = () => ({
+  presentationStyle: { canvasSize: { width: 1280, height: 720 } },
+  beats: [
+    { text: "a", image: { type: "slide", slide: { layout: "title", title: "A" } } },
+    { text: "b", image: { type: "textSlide", slide: { title: "B" } } },
+  ],
+  slideParams: { theme: "dark" },
+});
+
+test("a full edit cycle never writes through to the host's script", async () => {
+  // `beatsOf` hands back the script's OWN array, not a copy. That is only safe because every
+  // array operation in the editor slices first — and "it slices" is a property worth pinning,
+  // not a line to re-read. Six operations are driven here (up, down, remove, add, chip).
+  const { mountBeatList } = await import("./support/beatViewHarness");
+  const host = hostScript();
+  const frozen = JSON.stringify(host);
+  const originalArray = host.beats;
+
+  const view = await mountBeatList(beatsOf(host));
+  const buttons = [...view.host.querySelectorAll("button")];
+  // Checked after EVERY click, not once at the end: an in-place reorder followed by its inverse
+  // leaves the array where it started, so a single comparison at the end reports nothing —
+  // measured, that mutation passed a whole-sweep assertion.
+  buttons.forEach((button, index) => {
+    button.click();
+    assert.equal(JSON.stringify(host), frozen, `click ${index} ("${(button.textContent ?? "").trim()}") wrote through to the host`);
+  });
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const emitted = [...view.emitted];
+  view.unmount();
+
+  assert.ok(buttons.length >= 6, `the sweep must reach every array operation, got ${buttons.length} buttons`);
+  assert.ok(emitted.length >= 4, `the sweep must actually drive the editor, got ${emitted.length} emits`);
+  assert.equal(host.beats, originalArray, "including the array identity it handed over");
+
+  // And every one of those emits round-trips without losing the fields a host cares about.
+  emitted.forEach((beats, index) => {
+    const rebuilt = withBeats(host, beats as never);
+    assert.deepEqual(rebuilt.presentationStyle, host.presentationStyle, `emit ${index}`);
+    assert.deepEqual(rebuilt.slideParams, host.slideParams, `emit ${index}`);
+  });
+});
