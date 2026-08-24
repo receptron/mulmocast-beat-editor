@@ -1,6 +1,12 @@
 # Changelog
 
-## Unreleased
+## 1.1.0 — 2026-08-25
+
+Editing on the slide itself is back. 1.0.0 shipped without it — the iframe editor was removed
+and nothing had replaced it yet — so a beat rendered as a `div` was read-only and the only way
+to change a slide was the `Inspector` form. Everything below runs against the host's own
+document, so a host embeds it the way it embeds any other component.
+
 
 ### Added
 
@@ -19,6 +25,30 @@
 - **Inline formatting no longer writes markup deck cannot read back** (#64). Colour and emphasis
   share one slot, so applying one supersedes the others over that text instead of nesting — a
   nested `{a:x{b:y}z}` put its own braces on screen and the next edit formatted those.
+
+  Measured over the same sweeps before and after: 34 → 0 of 1375 single edits, 282 → 0 toggles,
+  291 → 0 stacked sequences.
+
+- **Editing a `bigQuote` slide multiplied its quotation marks** (#67). The marker sat on the
+  `<blockquote>`, which also holds the decorative `“ ”`, so each edit absorbed them. Fixed in
+  `@mulmocast/deck` 2.0.1; the peer floor moves with it, because `mulmocast` also depends on
+  deck and leaving it at 2.0.0 let the lockfile resolve two copies.
+
+- **Clicking a marker sometimes lost the edit before it started** (#61, #62, #63).
+
+### Host integration (#57)
+
+- **`beatsOf(script)` / `withBeats(script, beats)`** — the two pure functions a host needs to
+  hand a whole MulmoScript to `BeatListEditor`, which takes and emits a beat array. Every element
+  of the original array is preserved, including ones that are not records.
+
+- **The editing pane adapts to a narrow host.** The layout is a container query rather than a
+  prop, so nothing has to be declared: below `@3xl` the pane moves under the list instead of
+  beside it. Its width is `--beat-editor-pane-width` (default `24rem`) for hosts that want to
+  set it.
+
+  Reordering beats themselves stays on the up/down buttons — deliberate, and confirmed as the
+  intended replacement for the iframe editor's drag.
 
 ## @mulmocast/beat-editor 1.0.0 — 2026-08-23
 
