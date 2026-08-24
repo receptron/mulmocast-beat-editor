@@ -238,6 +238,9 @@ const intentForThisRender = (): { path: string; beat: EditableBeat } | null => {
 };
 
 const openPendingMarker = () => {
+  // A rebuild invalidates a press that has not become a click yet: whatever it was aimed at is
+  // gone. Left alive, a LATER commit would carry it and open that field — measured.
+  pending_path.value = null;
   const intent = intentForThisRender();
   if (!intent || !editing.value) return;
   const marker = host.value?.querySelector<HTMLElement>(`[data-mulmo-path="${intent.path}"]`);
@@ -298,6 +301,9 @@ const commit = (event: FocusEvent) => {
   // into the replacement. Comparing the beat catches both, so it is the only net here; two
   // where either suffices means neither can be break-checked.
   if (editing_beat.value !== props.beat) {
+    // Nothing is written, so nothing is carried — and the press that is still pending belonged
+    // to the session being refused.
+    carryIntent(null);
     endEditing(target);
     return;
   }

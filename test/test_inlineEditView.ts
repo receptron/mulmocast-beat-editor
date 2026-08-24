@@ -660,3 +660,56 @@ test("an intent cannot land on a different beat that happens to have the same pa
   view.unmount();
   assert.deepEqual(opened, [], "the press belonged to the beat that is no longer here");
 });
+
+test("a press invalidated by an unrelated rebuild is not carried by a later commit", async () => {
+  // Codex round 3. The rebuild clears the CARRIED intent but was leaving the PENDING one, so a
+  // press during an edit that an external replacement interrupted rode along on whatever
+  // committed next.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+
+  // The host replaces the beat before the click or the commit gets there.
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Replaced", subtitle: "Sub" } } });
+  await settle();
+  await settle();
+
+  // Now an ordinary keyboard edit, which must not drag the abandoned press along.
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the abandoned press opens nothing");
+});
+
+test("a refused commit drops the press it was carrying", async () => {
+  // The beat-identity refusal writes nothing, so there is nothing to carry — and the press
+  // belonged to the session being refused.
+  //
+  // The replacement renders byte-identical HTML on purpose: that is the only way to reach the
+  // refusal WITHOUT a rebuild, and the rebuild clears the pending press by itself. With a
+  // visible replacement this test cannot tell whether the refusal did anything.
+  const { mountBeatViewReactive } = await import("./support/beatViewHarness");
+  const view = await mountBeatViewReactive(slide(), { hostApplies: true });
+  clickPath(view, "title");
+  pressDownOn(view, "subtitle");
+  view.replaceBeat({ text: "", image: { type: "slide", slide: { layout: "title", title: "Before", subtitle: "Sub" } } });
+  await settle();
+  blurToNowhere(view);
+  await settle();
+  assert.equal(view.emitted.length, 0, "the refusal writes nothing");
+
+  // A later edit commits for real. The abandoned press must not ride along.
+  pressOn(view, "title", "Enter");
+  setEditedHtml(view, "title", "LATER");
+  blurToNowhere(view);
+  await settle();
+  await settle();
+  const opened = [...view.host.querySelectorAll("[contenteditable]")].map((element) => element.getAttribute("data-mulmo-path"));
+  view.unmount();
+  assert.deepEqual(opened, [], "the refused session's press opens nothing");
+});
