@@ -74,3 +74,77 @@ test("a beats array carrying an element the editor cannot render still lists", a
   assert.ok(text.includes("no image"), "an unrenderable beat is labelled rather than crashing the list");
   assert.ok(cards > 0 || text.length > 0, "the list rendered");
 });
+
+/**
+ * Click every control, checking `afterEach` between clicks, and answer with what was clicked.
+ *
+ * Between EVERY click, not once at the end: an in-place reorder followed by its inverse leaves
+ * the array where it started, so a single comparison afterwards reports nothing — measured,
+ * that mutation walked through a whole-sweep assertion.
+ */
+type Click = { label: string; emits: number };
+
+const clickEveryControl = (host: HTMLElement, emitted: unknown[], afterEach: () => void): Click[] =>
+  [...host.querySelectorAll("button")].map((button) => {
+    const before = emitted.length;
+    button.click();
+    afterEach();
+    return { label: button.textContent.trim(), emits: emitted.length - before };
+  });
+
+/**
+ * Every write path must have actually RUN, measured by what each click emitted.
+ *
+ * A button count, or even a label list, only says a control was on screen. `update` is reached
+ * solely because the fixture's first beat is a slide, whose editor pane renders "+ chip", so
+ * what has to be asserted is that clicking it produced an emit — not that it existed.
+ */
+const assertReachesEveryArrayOperation = (clicks: Click[]): void => {
+  const emitsFrom = (matches: (label: string) => boolean): number =>
+    clicks.filter((click) => matches(click.label)).reduce((total, click) => total + click.emits, 0);
+  const seen = JSON.stringify(clicks);
+  assert.ok(emitsFrom((label) => label === "\u2191" || label === "\u2193") >= 1, `a reorder must have emitted: ${seen}`);
+  assert.ok(emitsFrom((label) => label === "\u2715") >= 1, `a remove must have emitted: ${seen}`);
+  assert.ok(emitsFrom((label) => label.startsWith("+ Add")) >= 1, `the add must have emitted: ${seen}`);
+  assert.ok(
+    emitsFrom((label) => label.startsWith("+ ") && !label.startsWith("+ Add")) >= 1,
+    `an editor-pane control must have emitted, which is what reaches update: ${seen}`,
+  );
+};
+
+/** A script shaped like a host's: beats, plus the fields a careless write-back would drop. */
+const hostScript = () => ({
+  presentationStyle: { canvasSize: { width: 1280, height: 720 } },
+  beats: [
+    { text: "a", image: { type: "slide", slide: { layout: "title", title: "A" } } },
+    { text: "b", image: { type: "textSlide", slide: { title: "B" } } },
+  ],
+  slideParams: { theme: "dark" },
+});
+
+test("a full edit cycle never writes through to the host's script", async () => {
+  // `beatsOf` hands back the script's OWN array, not a copy. That is only safe because every
+  // array operation in the editor slices first — and "it slices" is a property worth pinning,
+  // not a line to re-read. Six operations are driven here (up, down, remove, add, chip).
+  const { mountBeatList } = await import("./support/beatViewHarness");
+  const host = hostScript();
+  const frozen = JSON.stringify(host);
+  const originalArray = host.beats;
+
+  const view = await mountBeatList(beatsOf(host));
+  const clicks = clickEveryControl(view.host, view.emitted, () => assert.equal(JSON.stringify(host), frozen, "a control wrote through to the host"));
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  const emitted = [...view.emitted];
+  view.unmount();
+
+  assertReachesEveryArrayOperation(clicks);
+  assert.ok(emitted.length >= 4, `the sweep must actually drive the editor, got ${emitted.length} emits`);
+  assert.equal(host.beats, originalArray, "including the array identity it handed over");
+
+  // And every one of those emits round-trips without losing the fields a host cares about.
+  emitted.forEach((beats, index) => {
+    const rebuilt = withBeats(host, beats as never);
+    assert.deepEqual(rebuilt.presentationStyle, host.presentationStyle, `emit ${index}`);
+    assert.deepEqual(rebuilt.slideParams, host.slideParams, `emit ${index}`);
+  });
+});
