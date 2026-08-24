@@ -55,12 +55,12 @@
     "node": ">=22.0.0"
   },
   "peerDependencies": {
-    "@mulmocast/deck": "^2.0.0",
+    "@mulmocast/deck": "^2.0.1",
     "vue": "^3.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@mulmocast/deck": "^2.0.0",
+    "@mulmocast/deck": "^2.0.1",
     "@tailwindcss/cli": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
     "@types/jsdom": "^30.0.0",
