@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert";
+import { slideLayoutSchema } from "@mulmocast/deck";
 
 import {
   moveInArray,
@@ -84,6 +85,21 @@ test("makeBlock: tag", () => {
 test("isSlideLayout: every layout makeSlide produces is accepted", () => {
   LAYOUT_TYPES.forEach((layout) => {
     assert.equal(isSlideLayout(makeSlide(layout)), true, layout);
+  });
+});
+
+// LAYOUT_TYPES is written out by hand, and a layout missing from it is not a compile error:
+// isSlideLayout then calls a slide deck can draw "not a slide". Checked against deck itself.
+test("LAYOUT_TYPES: every layout @mulmocast/deck declares, and no other", () => {
+  const declared = slideLayoutSchema.options.map((option) => option.shape.layout.value);
+  const byName = (a: string, b: string) => a.localeCompare(b);
+  assert.deepEqual([...LAYOUT_TYPES].sort(byName), [...declared].sort(byName));
+});
+
+test("makeSlide: every skeleton is a valid deck slide", () => {
+  LAYOUT_TYPES.forEach((layout) => {
+    const result = slideLayoutSchema.safeParse(makeSlide(layout));
+    assert.equal(result.success, true, `${layout}: ${result.error?.message ?? ""}`);
   });
 });
 

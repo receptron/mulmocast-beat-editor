@@ -28,6 +28,7 @@ export const LAYOUT_TYPES: SlideLayout["layout"][] = [
   "funnel",
   "waterfall",
   "manifesto",
+  "figure",
 ];
 
 /** Every content block `type` value. */
@@ -127,6 +128,12 @@ export const makeSlide = (layout: SlideLayout["layout"]): SlideLayout => {
       return { layout: "waterfall", title: "Waterfall", items: [{ label: "Start", value: 100 }] };
     case "manifesto":
       return { layout: "manifesto", title: "Manifesto", items: [{ title: "Principle 1" }] };
+    case "figure":
+      return {
+        layout: "figure",
+        title: "Figure",
+        figure: { type: "chart", chartData: { type: "bar", data: { labels: ["A", "B"], datasets: [{ label: "series", data: [1, 2] }] } } },
+      };
   }
 };
 
