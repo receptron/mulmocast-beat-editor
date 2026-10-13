@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import type { ContentBlock } from "@mulmocast/deck";
 import { BLOCK_TYPES, makeBlock, moveInArray } from "../editorHelpers";
+import { renderableBlocks } from "../inspectableSlide";
 import ContentBlockEditor from "./ContentBlockEditor.vue";
 
 const props = defineProps<{ blocks?: ContentBlock[]; label?: string }>();
 const emit = defineEmits<{ update: [blocks: ContentBlock[]] }>();
 
-const list = () => props.blocks ?? [];
+const list = () => renderableBlocks(props.blocks);
 
 const onBlockUpdate = (i: number, block: ContentBlock) => {
   const next = list().slice();
