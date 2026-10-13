@@ -115,3 +115,26 @@ test("an eyebrow colour without a label leaves no eyebrow behind", async () => {
   assert.ok(isRecord(emitted), "the editor emitted nothing to inspect");
   assert.equal(emitted["eyebrow"], undefined);
 });
+
+const optionValues = (select: HTMLSelectElement): string[] => [...select.options].map((option) => option.value);
+
+test("a figure's block picker offers only the block types a figure holds", async () => {
+  const mounted = await mountEditor("Inspector", makeSlide("figure"));
+  const picker = mounted.selects.find((select) => optionValues(select).includes("chart"));
+  assert.ok(picker, "no block type picker on a figure slide");
+  assert.deepEqual(optionValues(picker), ["chart", "mermaid"]);
+
+  const { emitted } = chooseOption(mounted, picker, "mermaid");
+  mounted.unmount();
+  assert.ok(isRecord(emitted) && isRecord(emitted["figure"]), "the figure was not replaced");
+  assert.deepEqual(emitted["figure"], makeBlock("mermaid"));
+  assert.equal(emitted["layout"], "figure");
+});
+
+test("a block picker anywhere else still offers every block type", async () => {
+  const mounted = await mountEditor("ContentBlockEditor", makeBlock("chart"));
+  const picker = mounted.selects.find((select) => optionValues(select).includes("chart"));
+  mounted.unmount();
+  assert.ok(picker);
+  assert.deepEqual(optionValues(picker), [...BLOCK_TYPES]);
+});

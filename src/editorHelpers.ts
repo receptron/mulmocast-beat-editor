@@ -1,4 +1,4 @@
-import type { SlideLayout, ContentBlock, AccentColorKey } from "@mulmocast/deck";
+import type { SlideLayout, ContentBlock, AccentColorKey, FigureSlide } from "@mulmocast/deck";
 import { isRecord } from "./beatHelpers";
 
 /** Accent color tokens accepted by every layout / block in the deck schema. */
@@ -47,6 +47,11 @@ export const BLOCK_TYPES: ContentBlock["type"][] = [
   "section",
   "table",
 ];
+
+/** The block types a `figure` slide holds — one block, filling the slide. */
+export const FIGURE_BLOCK_TYPES: FigureSlide["figure"]["type"][] = ["chart", "mermaid"];
+
+export const isFigureBlock = (block: ContentBlock): block is FigureSlide["figure"] => FIGURE_BLOCK_TYPES.some((type) => type === block.type);
 
 /** Structured-clone replacement that works for the plain-data slide objects. */
 /**

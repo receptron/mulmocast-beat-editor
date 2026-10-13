@@ -8,6 +8,9 @@ import {
   makeBlock,
   makeSlide,
   isSlideLayout,
+  isFigureBlock,
+  FIGURE_BLOCK_TYPES,
+  BLOCK_TYPES,
   LAYOUT_TYPES,
   parsePath,
   getByPath,
@@ -100,6 +103,16 @@ test("makeSlide: every skeleton is a valid deck slide", () => {
   LAYOUT_TYPES.forEach((layout) => {
     const result = slideLayoutSchema.safeParse(makeSlide(layout));
     assert.equal(result.success, true, `${layout}: ${result.error?.message ?? ""}`);
+  });
+});
+
+test("FIGURE_BLOCK_TYPES: the block types deck's figure layout accepts", () => {
+  assert.deepEqual([...FIGURE_BLOCK_TYPES], ["chart", "mermaid"]);
+});
+
+test("isFigureBlock: chart and mermaid, and no other block type", () => {
+  BLOCK_TYPES.forEach((type) => {
+    assert.equal(isFigureBlock(makeBlock(type)), type === "chart" || type === "mermaid", type);
   });
 });
 
