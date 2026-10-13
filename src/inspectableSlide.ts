@@ -1,6 +1,6 @@
-import { slideLayoutSchema, type SlideLayout } from "@mulmocast/deck";
+import { slideLayoutSchema, type ContentBlock, type SlideLayout } from "@mulmocast/deck";
 import { isRecord } from "./beatHelpers";
-import { isSlideLayout, makeSlide } from "./editorHelpers";
+import { BLOCK_TYPES, isSlideLayout, makeBlock, makeSlide } from "./editorHelpers";
 
 /**
  * Whether deck accepts the layout with `key` left out. The skeleton is a valid slide (pinned by a test),
@@ -43,3 +43,14 @@ export const inspectableSlide = (slide: SlideLayout): SlideLayout => {
   );
   return isSlideLayout(repaired) ? repaired : slide;
 };
+
+const isContentBlock = (value: unknown): value is ContentBlock => isRecord(value) && BLOCK_TYPES.some((type) => type === value["type"]);
+
+/**
+ * A list of content blocks the block editors can render: an entry that is not a block becomes a text
+ * block in the same position, for the same reason `inspectableSlide` repairs a slide. Every block list
+ * in the Inspector — a panel's, a column's, a cell's — goes through `ContentBlocksEditor`, so this is
+ * the one place that needs it.
+ */
+export const renderableBlocks = (blocks: readonly unknown[] | undefined): ContentBlock[] =>
+  (blocks ?? []).map((block) => (isContentBlock(block) ? block : makeBlock("text")));

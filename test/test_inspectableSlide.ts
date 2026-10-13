@@ -2,8 +2,8 @@ import test from "node:test";
 import assert from "node:assert";
 import type { SlideLayout } from "@mulmocast/deck";
 
-import { inspectableSlide } from "../src/inspectableSlide";
-import { LAYOUT_TYPES, isSlideLayout, makeSlide } from "../src/editorHelpers";
+import { inspectableSlide, renderableBlocks } from "../src/inspectableSlide";
+import { LAYOUT_TYPES, isSlideLayout, makeBlock, makeSlide } from "../src/editorHelpers";
 
 const slideOf = (value: Record<string, unknown>): SlideLayout => {
   assert.ok(isSlideLayout(value), JSON.stringify(value));
@@ -53,4 +53,17 @@ test("inspectableSlide: the input is not mutated", () => {
   const before = JSON.stringify(slide);
   inspectableSlide(slide);
   assert.equal(JSON.stringify(slide), before);
+});
+
+test("renderableBlocks: blocks are kept, anything else becomes a text block in the same position", () => {
+  const chart = makeBlock("chart");
+  assert.deepStrictEqual(renderableBlocks([chart, null, "x", { type: "nope" }, 3, chart]), [
+    chart,
+    makeBlock("text"),
+    makeBlock("text"),
+    makeBlock("text"),
+    makeBlock("text"),
+    chart,
+  ]);
+  assert.deepStrictEqual(renderableBlocks(undefined), []);
 });

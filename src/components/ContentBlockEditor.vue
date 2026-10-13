@@ -2,6 +2,7 @@
 import type { ContentBlock, BulletItem } from "@mulmocast/deck";
 import AccentColorSelect from "./AccentColorSelect.vue";
 import { BLOCK_TYPES, TEXT_SIZES, BULLET_ICONS, ALIGNS, CALLOUT_STYLES, makeBlock, clone } from "../editorHelpers";
+import { isRecord } from "../beatHelpers";
 
 // `types` narrows the type picker; `single` is a block that is the only one of its slot, so it has
 // nothing to move past and cannot be removed — a figure slide's block.
@@ -23,14 +24,19 @@ const setType = (t: ContentBlock["type"]) => {
 };
 
 // ─── helpers for bullets-block items ───
-const bulletText = (item: BulletItem): string => (typeof item === "string" ? item : item.text);
-const isBulletObj = (item: BulletItem): item is Exclude<BulletItem, string> => typeof item !== "string";
+// Bullet items come from the slide under edit, so they are checked rather than trusted: a `null`
+// item renders as an empty line, and editing it writes a proper item back.
+const isBulletObj = (item: unknown): item is Exclude<BulletItem, string> => isRecord(item) && typeof item["text"] === "string";
+const bulletText = (item: unknown): string => {
+  if (typeof item === "string") return item;
+  return isBulletObj(item) ? item.text : "";
+};
 
 const updateBulletItem = (i: number, changes: Partial<Exclude<BulletItem, string>>) => {
   if (props.block.type !== "bullets") return;
   const items = props.block.items.map((it, idx) => {
     if (idx !== i) return it;
-    const obj = isBulletObj(it) ? { ...it } : { text: it };
+    const obj = isBulletObj(it) ? { ...it } : { text: bulletText(it) };
     Object.assign(obj, changes);
     // Drop the object form back to plain string when nothing extra survives.
     const hasExtras = obj.icon !== undefined || obj.size !== undefined || (obj.items?.length ?? 0) > 0;
