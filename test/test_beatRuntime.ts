@@ -129,6 +129,16 @@ test("driveRuntimes: two redraws waiting on the same script, only the last draws
   assert.strictEqual(bound.size, 1, "one canvas bound once");
 });
 
+// Deck slides size the canvas's box; without these two the chart keeps a 2:1 ratio and is clipped.
+test("driveRuntimes: each chart is built to fill its box, with the beat's config kept", async () => {
+  installFakeDom();
+  const host = fakeHost(1, "fill");
+  const run = driveRuntimes(host, [chartFragment]);
+  finishLoads();
+  await run;
+  assert.deepStrictEqual(built[0]?.config, { type: "bar", label: "fill-0", options: { responsive: true, maintainAspectRatio: false } });
+});
+
 test("driveRuntimes: a redraw destroys what the previous one drew", async () => {
   installFakeDom();
   const host = fakeHost(2, "canvas");
