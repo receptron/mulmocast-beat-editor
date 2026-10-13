@@ -62,7 +62,7 @@ const editors: Promise<Editors> = (async () => {
 export const compiled = editors;
 export { dom };
 
-export type Mounted = { selects: HTMLSelectElement[]; emitted: unknown[]; unmount: () => void };
+export type Mounted = { root: HTMLElement; selects: HTMLSelectElement[]; emitted: unknown[]; unmount: () => void };
 
 /** Mount one editor on a fresh element and hand back its selects and the values it emits. */
 export const mountEditor = async (name: EditorName, value: unknown): Promise<Mounted> => {
@@ -76,6 +76,7 @@ export const mountEditor = async (name: EditorName, value: unknown): Promise<Mou
   const app = createApp({ render: () => h(component, { [prop]: value, onUpdate: (next: unknown) => emitted.push(next) }) });
   app.mount(host);
   return {
+    root: host,
     selects: [...host.querySelectorAll("select")],
     emitted,
     unmount: () => {

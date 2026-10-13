@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type {
   SlideLayout,
   ContentBlock,
@@ -17,10 +18,24 @@ import type {
   FunnelSlide,
   WaterfallSlide,
   BigQuoteSlide,
+  FigureSlide,
 } from "@mulmocast/deck";
 import AccentColorSelect from "./AccentColorSelect.vue";
-import { SLIDE_DENSITIES, SLIDE_TITLE_SIZES, SLIDE_SUBTITLE_SIZES, LAYOUT_TYPES, VALIGNS, clone, moveInArray, makeSlide } from "../editorHelpers";
+import {
+  SLIDE_DENSITIES,
+  SLIDE_TITLE_SIZES,
+  SLIDE_SUBTITLE_SIZES,
+  LAYOUT_TYPES,
+  VALIGNS,
+  FIGURE_BLOCK_TYPES,
+  clone,
+  moveInArray,
+  makeSlide,
+  makeBlock,
+  isFigureBlock,
+} from "../editorHelpers";
 import ContentBlocksEditor from "./ContentBlocksEditor.vue";
+import ContentBlockEditor from "./ContentBlockEditor.vue";
 
 const props = defineProps<{ slide: SlideLayout }>();
 const emit = defineEmits<{ update: [slide: SlideLayout] }>();
@@ -133,6 +148,17 @@ const removeManifestoItem = (i: number) => {
 const moveManifestoItem = (i: number, d: number) => {
   if (props.slide.layout !== "manifesto") return;
   patch<ManifestoSlide>({ items: moveInArray(props.slide.items, i, d) });
+};
+
+// ─── figure ───
+// A figure slide under edit may carry no block, or one deck would reject; it gets a chart to edit,
+// and the first edit writes a valid block back rather than the form failing to render.
+const figureBlock = computed<ContentBlock>(() =>
+  props.slide.layout === "figure" && isFigureBlock(props.slide.figure) ? props.slide.figure : makeBlock("chart"),
+);
+const setFigure = (block: ContentBlock) => {
+  if (props.slide.layout !== "figure" || !isFigureBlock(block)) return;
+  patch<FigureSlide>({ figure: block });
 };
 
 // ─── columns ───
@@ -1030,6 +1056,12 @@ const tableCellText = (cell: unknown): string => {
           />
         </div>
       </div>
+    </section>
+
+    <!-- figure -->
+    <section v-if="slide.layout === 'figure'" class="space-y-2">
+      <span class="block text-[11px] font-semibold uppercase tracking-wider text-stone-500">Figure</span>
+      <ContentBlockEditor :block="figureBlock" :index="0" :total="1" :types="FIGURE_BLOCK_TYPES" single @update="setFigure" />
     </section>
   </div>
 </template>

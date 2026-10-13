@@ -3,7 +3,9 @@ import type { ContentBlock, BulletItem } from "@mulmocast/deck";
 import AccentColorSelect from "./AccentColorSelect.vue";
 import { BLOCK_TYPES, TEXT_SIZES, BULLET_ICONS, ALIGNS, CALLOUT_STYLES, makeBlock, clone } from "../editorHelpers";
 
-const props = defineProps<{ block: ContentBlock; index: number; total: number }>();
+// `types` narrows the type picker; `single` is a block that is the only one of its slot, so it has
+// nothing to move past and cannot be removed — a figure slide's block.
+const props = defineProps<{ block: ContentBlock; index: number; total: number; types?: readonly ContentBlock["type"][]; single?: boolean }>();
 const emit = defineEmits<{
   update: [block: ContentBlock];
   remove: [];
@@ -119,10 +121,10 @@ const cellText = (cell: unknown): string => {
         class="rounded border border-stone-300 bg-white px-1.5 py-1 text-[11px] font-mono"
         @change="setType(($event.target as HTMLSelectElement).value as ContentBlock['type'])"
       >
-        <option v-for="t in BLOCK_TYPES" :key="t" :value="t">{{ t }}</option>
+        <option v-for="t in types ?? BLOCK_TYPES" :key="t" :value="t">{{ t }}</option>
       </select>
-      <span class="text-[10px] text-stone-400">#{{ index + 1 }}</span>
-      <div class="ml-auto flex items-center gap-1">
+      <span v-if="!single" class="text-[10px] text-stone-400">#{{ index + 1 }}</span>
+      <div v-if="!single" class="ml-auto flex items-center gap-1">
         <button
           type="button"
           :disabled="index === 0"

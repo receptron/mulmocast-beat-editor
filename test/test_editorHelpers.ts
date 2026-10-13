@@ -8,6 +8,9 @@ import {
   makeBlock,
   makeSlide,
   isSlideLayout,
+  isFigureBlock,
+  FIGURE_BLOCK_TYPES,
+  BLOCK_TYPES,
   LAYOUT_TYPES,
   parsePath,
   getByPath,
@@ -100,6 +103,41 @@ test("makeSlide: every skeleton is a valid deck slide", () => {
   LAYOUT_TYPES.forEach((layout) => {
     const result = slideLayoutSchema.safeParse(makeSlide(layout));
     assert.equal(result.success, true, `${layout}: ${result.error?.message ?? ""}`);
+  });
+});
+
+test("isFigureBlock: anything that is not a chart or mermaid block is refused, never thrown on", () => {
+  [
+    undefined,
+    null,
+    "chart",
+    7,
+    [],
+    {},
+    { type: "text", value: "x" },
+    { type: 1 },
+    { type: "chart" },
+    { type: "chart", chartData: "bar" },
+    { type: "mermaid" },
+    { type: "mermaid", code: 5 },
+  ].forEach((value) => {
+    assert.equal(isFigureBlock(value), false, JSON.stringify(value));
+  });
+});
+
+test("isFigureBlock: a complete chart or mermaid block is accepted", () => {
+  [makeBlock("chart"), makeBlock("mermaid"), { type: "mermaid", code: "graph TD; A-->B", title: "T" }].forEach((value) => {
+    assert.equal(isFigureBlock(value), true, JSON.stringify(value));
+  });
+});
+
+test("FIGURE_BLOCK_TYPES: the block types deck's figure layout accepts", () => {
+  assert.deepEqual([...FIGURE_BLOCK_TYPES], ["chart", "mermaid"]);
+});
+
+test("isFigureBlock: chart and mermaid, and no other block type", () => {
+  BLOCK_TYPES.forEach((type) => {
+    assert.equal(isFigureBlock(makeBlock(type)), type === "chart" || type === "mermaid", type);
   });
 });
 
