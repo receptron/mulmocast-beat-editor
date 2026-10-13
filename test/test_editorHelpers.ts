@@ -106,6 +106,12 @@ test("makeSlide: every skeleton is a valid deck slide", () => {
   });
 });
 
+test("isFigureBlock: anything that is not a chart or mermaid block is refused, never thrown on", () => {
+  [undefined, null, "chart", 7, [], {}, { type: "text", value: "x" }, { type: 1 }].forEach((value) => {
+    assert.equal(isFigureBlock(value), false, JSON.stringify(value));
+  });
+});
+
 test("FIGURE_BLOCK_TYPES: the block types deck's figure layout accepts", () => {
   assert.deepEqual([...FIGURE_BLOCK_TYPES], ["chart", "mermaid"]);
 });

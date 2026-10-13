@@ -51,7 +51,8 @@ export const BLOCK_TYPES: ContentBlock["type"][] = [
 /** The block types a `figure` slide holds — one block, filling the slide. */
 export const FIGURE_BLOCK_TYPES: FigureSlide["figure"]["type"][] = ["chart", "mermaid"];
 
-export const isFigureBlock = (block: ContentBlock): block is FigureSlide["figure"] => FIGURE_BLOCK_TYPES.some((type) => type === block.type);
+/** A value a figure slide can hold. Takes `unknown`: a slide under edit can carry anything in `figure`. */
+export const isFigureBlock = (value: unknown): value is FigureSlide["figure"] => isRecord(value) && FIGURE_BLOCK_TYPES.some((type) => type === value.type);
 
 /** Structured-clone replacement that works for the plain-data slide objects. */
 /**

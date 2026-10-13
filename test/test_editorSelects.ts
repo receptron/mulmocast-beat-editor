@@ -138,3 +138,34 @@ test("a block picker anywhere else still offers every block type", async () => {
   assert.ok(picker);
   assert.deepEqual(optionValues(picker), [...BLOCK_TYPES]);
 });
+
+// A figure slide under edit can carry no block, or not an object; the form still renders and the
+// first edit writes a valid block back.
+test("a figure slide with a missing or malformed block still renders, and an edit repairs it", async () => {
+  for (const figure of [undefined, null, "chart", { type: "text", value: "x" }]) {
+    const slide = { layout: "figure", title: "T", ...(figure === undefined ? {} : { figure }) };
+    const mounted = await mountEditor("Inspector", slide);
+    const picker = mounted.selects.find((select) => optionValues(select).includes("chart"));
+    assert.ok(picker, `${JSON.stringify(figure)}: no block picker rendered`);
+    const { emitted } = chooseOption(mounted, picker, "mermaid");
+    mounted.unmount();
+    assert.ok(isRecord(emitted), `${JSON.stringify(figure)}: nothing emitted`);
+    assert.deepEqual(emitted["figure"], makeBlock("mermaid"), JSON.stringify(figure));
+    assert.equal(emitted["title"], "T");
+  }
+});
+
+const blockControls = (root: HTMLElement): string[] =>
+  [...root.querySelectorAll("button")].map((button) => button.textContent.trim()).filter((label) => ["↑", "↓", "×"].includes(label));
+
+test("a figure's block has no move or remove controls; a block in a list still does", async () => {
+  const figure = await mountEditor("Inspector", makeSlide("figure"));
+  const section = [...figure.root.querySelectorAll("section")].find((candidate) => candidate.textContent.trim().startsWith("Figure"));
+  assert.ok(section, "no Figure section");
+  assert.deepEqual(blockControls(section), []);
+  figure.unmount();
+
+  const listed = await mountEditor("ContentBlockEditor", makeBlock("chart"));
+  assert.deepEqual(blockControls(listed.root), ["↑", "↓", "×"]);
+  listed.unmount();
+});

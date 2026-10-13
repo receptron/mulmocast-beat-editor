@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import type {
   SlideLayout,
   ContentBlock,
@@ -30,6 +31,7 @@ import {
   clone,
   moveInArray,
   makeSlide,
+  makeBlock,
   isFigureBlock,
 } from "../editorHelpers";
 import ContentBlocksEditor from "./ContentBlocksEditor.vue";
@@ -149,6 +151,11 @@ const moveManifestoItem = (i: number, d: number) => {
 };
 
 // ─── figure ───
+// A figure slide under edit may carry no block, or the wrong kind; it gets a chart to edit, and the
+// first edit writes a valid block back rather than the form failing to render.
+const figureBlock = computed<ContentBlock>(() =>
+  props.slide.layout === "figure" && isFigureBlock(props.slide.figure) ? props.slide.figure : makeBlock("chart"),
+);
 const setFigure = (block: ContentBlock) => {
   if (props.slide.layout !== "figure" || !isFigureBlock(block)) return;
   patch<FigureSlide>({ figure: block });
@@ -1054,7 +1061,7 @@ const tableCellText = (cell: unknown): string => {
     <!-- figure -->
     <section v-if="slide.layout === 'figure'" class="space-y-2">
       <span class="block text-[11px] font-semibold uppercase tracking-wider text-stone-500">Figure</span>
-      <ContentBlockEditor :block="slide.figure" :index="0" :total="1" :types="FIGURE_BLOCK_TYPES" single @update="setFigure" />
+      <ContentBlockEditor :block="figureBlock" :index="0" :total="1" :types="FIGURE_BLOCK_TYPES" single @update="setFigure" />
     </section>
   </div>
 </template>
