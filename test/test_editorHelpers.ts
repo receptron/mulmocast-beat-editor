@@ -107,8 +107,27 @@ test("makeSlide: every skeleton is a valid deck slide", () => {
 });
 
 test("isFigureBlock: anything that is not a chart or mermaid block is refused, never thrown on", () => {
-  [undefined, null, "chart", 7, [], {}, { type: "text", value: "x" }, { type: 1 }].forEach((value) => {
+  [
+    undefined,
+    null,
+    "chart",
+    7,
+    [],
+    {},
+    { type: "text", value: "x" },
+    { type: 1 },
+    { type: "chart" },
+    { type: "chart", chartData: "bar" },
+    { type: "mermaid" },
+    { type: "mermaid", code: 5 },
+  ].forEach((value) => {
     assert.equal(isFigureBlock(value), false, JSON.stringify(value));
+  });
+});
+
+test("isFigureBlock: a complete chart or mermaid block is accepted", () => {
+  [makeBlock("chart"), makeBlock("mermaid"), { type: "mermaid", code: "graph TD; A-->B", title: "T" }].forEach((value) => {
+    assert.equal(isFigureBlock(value), true, JSON.stringify(value));
   });
 });
 

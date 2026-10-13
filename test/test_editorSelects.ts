@@ -139,10 +139,10 @@ test("a block picker anywhere else still offers every block type", async () => {
   assert.deepEqual(optionValues(picker), [...BLOCK_TYPES]);
 });
 
-// A figure slide under edit can carry no block, or not an object; the form still renders and the
-// first edit writes a valid block back.
+// A figure slide under edit can carry no block, or one deck would reject; the form still renders and
+// the first edit writes a valid block back.
 test("a figure slide with a missing or malformed block still renders, and an edit repairs it", async () => {
-  for (const figure of [undefined, null, "chart", { type: "text", value: "x" }]) {
+  for (const figure of [undefined, null, "chart", { type: "text", value: "x" }, { type: "chart" }, { type: "mermaid" }]) {
     const slide = { layout: "figure", title: "T", ...(figure === undefined ? {} : { figure }) };
     const mounted = await mountEditor("Inspector", slide);
     const picker = mounted.selects.find((select) => optionValues(select).includes("chart"));

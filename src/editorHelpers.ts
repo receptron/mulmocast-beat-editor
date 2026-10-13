@@ -1,4 +1,4 @@
-import type { SlideLayout, ContentBlock, AccentColorKey, FigureSlide } from "@mulmocast/deck";
+import { chartBlockSchema, mermaidBlockSchema, type SlideLayout, type ContentBlock, type AccentColorKey, type FigureSlide } from "@mulmocast/deck";
 import { isRecord } from "./beatHelpers";
 
 /** Accent color tokens accepted by every layout / block in the deck schema. */
@@ -51,8 +51,13 @@ export const BLOCK_TYPES: ContentBlock["type"][] = [
 /** The block types a `figure` slide holds — one block, filling the slide. */
 export const FIGURE_BLOCK_TYPES: FigureSlide["figure"]["type"][] = ["chart", "mermaid"];
 
-/** A value a figure slide can hold. Takes `unknown`: a slide under edit can carry anything in `figure`. */
-export const isFigureBlock = (value: unknown): value is FigureSlide["figure"] => isRecord(value) && FIGURE_BLOCK_TYPES.some((type) => type === value.type);
+/**
+ * A block deck will accept in a figure slide. Takes `unknown`: a slide under edit can carry anything
+ * in `figure`. Decided by deck's own schemas, not by a field list here, so a required field deck adds
+ * later is required here too.
+ */
+export const isFigureBlock = (value: unknown): value is FigureSlide["figure"] =>
+  chartBlockSchema.safeParse(value).success || mermaidBlockSchema.safeParse(value).success;
 
 /** Structured-clone replacement that works for the plain-data slide objects. */
 /**

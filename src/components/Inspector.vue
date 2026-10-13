@@ -151,8 +151,8 @@ const moveManifestoItem = (i: number, d: number) => {
 };
 
 // ─── figure ───
-// A figure slide under edit may carry no block, or the wrong kind; it gets a chart to edit, and the
-// first edit writes a valid block back rather than the form failing to render.
+// A figure slide under edit may carry no block, or one deck would reject; it gets a chart to edit,
+// and the first edit writes a valid block back rather than the form failing to render.
 const figureBlock = computed<ContentBlock>(() =>
   props.slide.layout === "figure" && isFigureBlock(props.slide.figure) ? props.slide.figure : makeBlock("chart"),
 );
