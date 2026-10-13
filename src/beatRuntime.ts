@@ -1,4 +1,5 @@
 import type { BeatHtmlFragment } from "mulmocast/browser";
+import { chartConfigFillingBox } from "./chartConfig";
 
 /**
  * Loading and driving the runtimes a set of fragments asks for. Shared by the gallery and
@@ -103,7 +104,7 @@ export const driveRuntimes = async (container: FragmentHost, fragments: readonly
       const config = canvas.dataset.mulmoChart;
       const context = canvas.getContext("2d");
       if (!config || !context) return;
-      charts.push(new Chart(context, JSON.parse(config)));
+      charts.push(new Chart(context, chartConfigFillingBox(JSON.parse(config))));
     });
     state.set(container, { token, charts });
   }
