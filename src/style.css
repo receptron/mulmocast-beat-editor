@@ -11,7 +11,11 @@ html,
 body {
   height: 100%;
   margin: 0;
-  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    sans-serif;
 }
 
 #app {
