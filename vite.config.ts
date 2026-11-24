@@ -23,7 +23,7 @@ export default defineConfig({
           formats: ["es"],
           fileName: () => "index.js",
         },
-        rollupOptions: {
+        rolldownOptions: {
           // Don't bundle peer deps — consumers provide them.
           external: ["vue", "@mulmocast/deck"],
           output: { globals: { vue: "Vue" } },

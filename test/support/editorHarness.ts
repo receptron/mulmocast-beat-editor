@@ -47,7 +47,7 @@ const editors: Promise<Editors> = (async () => {
       // one: a ref written inside a component notifies its own watchers and not the render
       // effect the test's Vue created. Measured — a `ref` set by an event listener fired its
       // watcher four times and never re-rendered, and Vue warned "Missing ref owner context".
-      rollupOptions: { external: ["vue"] },
+      rolldownOptions: { external: ["vue"] },
     },
   });
   // `import()` takes a URL. A Windows absolute path is not one — Node reads the drive letter as a
