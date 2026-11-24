@@ -98,6 +98,12 @@ const rowsOf = (count: number) => Array.from({ length: count }, (_unused, index)
 
 const GAP = 100;
 
+// Read through the longhands: how the `transition` shorthand serializes omitted defaults (`ease`) differs between DOM implementations.
+const transitionOf = (element: HTMLElement): string => {
+  const { transitionProperty, transitionDuration, transitionTimingFunction } = element.style;
+  return transitionProperty === "" ? "" : `${transitionProperty} ${transitionDuration} ${transitionTimingFunction}`;
+};
+
 const flipOver = (count: number, fromPath: string, toPath: string, axis: "vertical" | "horizontal" = "vertical") => {
   const rows = rowsOf(count);
   const place = (path: string): Placement => {
@@ -111,7 +117,7 @@ const flipOver = (count: number, fromPath: string, toPath: string, axis: "vertic
   stubRects(after, place);
   const written = recordTransforms(after);
   const moves = playItemFlip(after, before, fromPath, toPath);
-  const transitions = [...after.querySelectorAll<HTMLElement>("[data-mulmo-item-path]")].map((element) => element.style.transition);
+  const transitions = [...after.querySelectorAll<HTMLElement>("[data-mulmo-item-path]")].map(transitionOf);
   return { moves, written, transitions, before };
 };
 
